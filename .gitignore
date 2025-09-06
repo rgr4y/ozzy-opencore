@@ -1,0 +1,75 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# Build outputs
+out/
+efi-build/
+usb-efi/
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Project specific
+deploy/
+config/deploy.env
+*.log
+*.tmp
+
+# Proxmox VM configurations (keep templates, ignore instances)
+config/proxmox/*.conf
+!config/proxmox/template.conf
+
+!config/changesets/sample.yaml
+config/changesets/*
+
+# Assets (large binaries)
+assets/*.zip
+assets/*.rom
+!assets/*.placeholder
+
+# Temporary test files
+test_output/
+temp/

@@ -1,0 +1,34 @@
+# OpenCore Remote Deploy - Python Requirements
+# Core dependencies for all scripts
+
+# YAML parsing and manipulation
+PyYAML>=6.0
+
+# Optional dependencies for enhanced functionality
+# (these will be installed automatically if needed)
+
+# For plist manipulation (built into Python 3.4+)
+# plistlib - included in standard library
+
+# For JSON handling (built into Python)
+# json - included in standard library
+
+# For path operations (built into Python 3.4+)
+# pathlib - included in standard library
+
+# For base64 encoding/decoding (built into Python)
+# base64 - included in standard library
+
+# For subprocess operations (built into Python)
+# subprocess - included in standard library
+
+# For argument parsing (built into Python 2.7+)
+# argparse - included in standard library
+
+# For file operations (built into Python)
+# shutil - included in standard library
+
+# Development dependencies (optional)
+# pytest>=7.0         # For running tests
+# black>=22.0          # For code formatting
+# flake8>=5.0          # For linting

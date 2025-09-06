@@ -1,0 +1,39 @@
+{
+  "opencore": {
+    "version": "1.0.5",
+    "repo": "acidanthera/OpenCorePkg",
+    "asset_glob": "OpenCore-1.0.5-RELEASE.zip"
+  },
+  "ocbinarydata": {
+    "repo": "acidanthera/OcBinaryData",
+    "drivers": [
+      {
+        "name": "HfsPlus.efi",
+        "path": "Drivers/HfsPlus.efi"
+      }
+    ]
+  },
+  "kexts": [
+    {
+      "name": "Lilu.kext",
+      "repo": "acidanthera/Lilu"
+    },
+    {
+      "name": "VirtualSMC.kext",
+      "repo": "acidanthera/VirtualSMC"
+    },
+    {
+      "name": "WhateverGreen.kext",
+      "repo": "acidanthera/WhateverGreen"
+    },
+    {
+      "name": "RestrictEvents.kext",
+      "repo": "acidanthera/RestrictEvents"
+    },
+    {
+      "name": "AppleALC.kext",
+      "repo": "acidanthera/AppleALC"
+    }
+  ]
+}
+

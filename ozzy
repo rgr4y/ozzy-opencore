@@ -1,0 +1,696 @@
+#!/usr/bin/env python3
+"""
+Ozzy - macOS OpenCore Remote Deploy Master Script
+
+A unified interface for all OpenCore deployment operations.
+Orchestrates operations by delegating to specialized libraries and scripts.
+"""
+
+import sys
+import argparse
+from pathlib import Path
+
+# Add lib directory to path for imports
+sys.path.insert(0, str(Path(__file__).resolve().parent / 'lib'))
+
+# Import all necessary functions from our libraries
+from lib import (
+    ROOT, log, warn, error, info, run_command,
+    paths, deploy_to_proxmox, build_iso_only, check_deployment_status,
+    list_available_changesets
+)
+
+def check_python_env():
+    """Check if the Python environment has required packages"""
+    try:
+        import yaml
+        import plistlib
+        return True
+    except ImportError:
+        return False
+
+def cmd_apply(args):
+    """Apply a changeset to OpenCore configuration"""
+    if not args.changeset:
+        error("Changeset name is required")
+        info("Usage: ozzy apply <changeset.yaml>")
+        return False
+    
+    # Ensure Python environment is set up
+    if not check_python_env():
+        log("Setting up Python environment first...")
+        if not cmd_setupenv(args):
+            return False
+    
+    changeset_name = args.changeset
+    if not changeset_name.endswith('.yaml'):
+        changeset_name += '.yaml'
+    
+    changeset_path = paths.changesets / changeset_name
+    
+    if not changeset_path.exists():
+        error(f"Changeset not found: {changeset_path}")
+        return False
+    
+    cmd = f'python3 "{ROOT / "scripts" / "apply_changeset.py"}" "{changeset_path}"'
+    return run_command(cmd, f"Applying changeset {changeset_name}")
+
+def cmd_usb(args):
+    """Create USB-ready EFI structure"""
+    log("Creating USB-ready EFI structure")
+    
+    # Ensure Python environment is set up
+    if not check_python_env():
+        log("Setting up Python environment first...")
+        if not cmd_setupenv(args):
+            return False
+    
+    script_path = ROOT / 'scripts' / 'create_usb_efi.py'
+    cmd_parts = [f'python3 "{script_path}"']
+    
+    if args.changeset:
+        changeset_name = args.changeset
+        if changeset_name.endswith('.yaml'):
+            changeset_name = changeset_name.replace('.yaml', '')
+        cmd_parts.append(f'--changeset "{changeset_name}"')
+    
+    if args.output:
+        cmd_parts.append(f'--output "{args.output}"')
+    
+    if getattr(args, 'force', False):
+        cmd_parts.append('--force')
+    
+    cmd = ' '.join(cmd_parts)
+    return run_command(cmd, "Creating USB EFI structure")
+
+def cmd_proxmox(args):
+    """Deploy to Proxmox VM using deployment library"""
+    log("Deploying to Proxmox VM")
+    
+    # Ensure Python environment is set up
+    if not check_python_env():
+        log("Setting up Python environment first...")
+        if not cmd_setupenv(args):
+            return False
+    
+    # Handle status check
+    if getattr(args, 'status', False):
+        check_deployment_status()
+        return True
+    
+    # Handle build-only mode
+    if getattr(args, 'build_only', False):
+        return build_iso_only(
+            changeset_name=args.changeset,
+            force_rebuild=getattr(args, 'rebuild', False)
+        )
+    
+    # Full deployment
+    try:
+        return deploy_to_proxmox(
+            changeset_name=args.changeset,
+            force_rebuild=getattr(args, 'rebuild', False)
+        )
+    except KeyboardInterrupt:
+        warn("Deployment cancelled by user")
+        return False
+    except Exception as e:
+        error(f"Deployment failed: {e}")
+        return False
+
+def cmd_fetch(args):
+    """Fetch OpenCore assets"""
+    log("Fetching OpenCore assets")
+    
+    script_path = ROOT / 'bin' / 'fetch_assets.sh'
+    if not script_path.exists():
+        error(f"Fetch script not found: {script_path}")
+        return False
+    
+    cmd = f'bash "{script_path}"'
+    return run_command(cmd, "Fetching OpenCore assets")
+
+def cmd_clean(args):
+    """Clean output directories"""
+    log("Cleaning output directories")
+    
+    if paths.build_root.exists():
+        cmd = f'rm -rf "{paths.build_root}"/*'
+        return run_command(cmd, "Cleaning build directory")
+    else:
+        info("No build directory to clean")
+        return True
+
+def cmd_setupenv(args):
+    """Set up Python environment"""
+    log("Setting up Python environment")
+    
+    script_path = ROOT / 'bin' / 'setup_env.sh'
+    if not script_path.exists():
+        error(f"Setup script not found: {script_path}")
+        return False
+    
+    cmd = f'bash "{script_path}"'
+    return run_command(cmd, "Setting up Python environment")
+
+def cmd_smbios(args):
+    """Generate new SMBIOS data"""
+    if not args.changeset:
+        error("Changeset name is required")
+        info("Usage: ozzy smbios <changeset.yaml>")
+        return False
+    
+    # Ensure Python environment is set up
+    if not check_python_env():
+        log("Setting up Python environment first...")
+        if not cmd_setupenv(args):
+            return False
+    
+    changeset_name = args.changeset
+    if not changeset_name.endswith('.yaml'):
+        changeset_name += '.yaml'
+    
+    changeset_path = paths.changesets / changeset_name
+    
+    if not changeset_path.exists():
+        error(f"Changeset not found: {changeset_path}")
+        return False
+    
+    cmd = f'python3 "{ROOT / "scripts" / "generate_smbios.py"}" "{changeset_path}"'
+    return run_command(cmd, f"Generating SMBIOS for {changeset_name}")
+
+def cmd_serial(args):
+    """Generate serial numbers and UUIDs"""
+    log("Generating serial numbers and UUIDs")
+    
+    # Ensure Python environment is set up
+    if not check_python_env():
+        log("Setting up Python environment first...")
+        if not cmd_setupenv(args):
+            return False
+    
+    script_path = ROOT / 'scripts' / 'generate_serial.py'
+    cmd_parts = [f'python3 "{script_path}"']
+    
+    if args.changeset:
+        changeset_name = args.changeset
+        if changeset_name.endswith('.yaml'):
+            changeset_name = changeset_name.replace('.yaml', '')
+        cmd_parts.append(f'--changeset "{changeset_name}"')
+    
+    if getattr(args, 'force', False):
+        cmd_parts.append('--force')
+    
+    if getattr(args, 'list', False):
+        cmd_parts.append('--list')
+    
+    cmd = ' '.join(cmd_parts)
+    return run_command(cmd, "Generating serial numbers")
+
+def cmd_status(args):
+    """Show project status"""
+    log("Project Status")
+    
+    # Show paths being used
+    info(f"Project Root: {ROOT}")
+    info(f"Build Output: {paths.build_root}")
+    info(f"Config Path: {paths.oc_efi}")
+    
+    # Show available changesets
+    changesets = list_available_changesets()
+    if changesets:
+        log("Available Changesets:")
+        for cs in sorted(changesets):
+            info(f"    - {cs}")
+    else:
+        warn("No changesets found")
+    
+    # Check Python environment
+    python_ok = check_python_env()
+    python_status = "✓" if python_ok else "✗"
+    info(f"Python environment ready: {python_status}")
+    
+    # Check deployment status if possible
+    try:
+        check_deployment_status()
+    except Exception as e:
+        warn(f"Could not check deployment status: {e}")
+    
+    return True
+
+def cmd_list(args):
+    """List available changesets"""
+    changesets = list_available_changesets()
+    if not changesets:
+        warn("No changesets found")
+        return True
+    
+    log("Available changesets:")
+    for cs in sorted(changesets):
+        info(f"  - {cs}")
+    
+    return True
+
+import os
+import sys
+import subprocess
+import argparse
+from pathlib import Path
+
+# Add lib directory to path for imports
+sys.path.insert(0, str(Path(__file__).resolve().parent / 'lib'))
+
+# Color constants for terminal output
+class Colors:
+    GREEN = '\033[0;32m'
+    YELLOW = '\033[1;33m'
+    RED = '\033[0;31m'
+    BLUE = '\033[0;34m'
+    NC = '\033[0m'  # No Color
+
+def log(msg): print(f"{Colors.GREEN}[*]{Colors.NC} {msg}")
+def warn(msg): print(f"{Colors.YELLOW}[!]{Colors.NC} {msg}")
+def error(msg): print(f"{Colors.RED}[ERROR]{Colors.NC} {msg}")
+def info(msg): print(f"{Colors.BLUE}[INFO]{Colors.NC} {msg}")
+
+# Import path manager
+try:
+    from paths import paths
+    ROOT = paths.root
+except ImportError:
+    # Fallback if paths library is not available
+    ROOT = Path(__file__).resolve().parent
+    warn("Path library not available, using fallback paths")
+
+def run_command(cmd, description=None, check=True):
+    """Execute a command with proper error handling"""
+    if description:
+        log(description)
+    log(f"Running: {cmd}")
+    
+    try:
+        result = subprocess.run(cmd, shell=True, check=check, cwd=ROOT)
+        return result.returncode == 0
+    except subprocess.CalledProcessError as e:
+        error(f"Command failed with exit code {e.returncode}")
+        return False
+    except Exception as e:
+        error(f"Command execution failed: {e}")
+        return False
+
+def check_python_env():
+    """Check if Python environment is properly set up"""
+    try:
+        import yaml
+        return True
+    except ImportError:
+        warn("Python environment not ready. PyYAML is required.")
+        return False
+
+def cmd_apply(args):
+    """Apply a changeset to the OpenCore configuration"""
+    if not args.changeset:
+        error("Changeset name is required")
+        info("Usage: ozzy apply <changeset.yaml>")
+        return False
+    
+    changeset_name = args.changeset
+    if not changeset_name.endswith('.yaml'):
+        changeset_name += '.yaml'
+    
+    try:
+        changeset_path = paths.changeset_file(changeset_name)
+    except NameError:
+        changeset_path = ROOT / 'config' / 'changesets' / changeset_name
+    
+    if not changeset_path.exists():
+        error(f"Changeset not found: {changeset_path}")
+        return False
+    
+    log(f"Applying changeset: {changeset_name}")
+    
+    # Ensure Python environment is set up
+    if not check_python_env():
+        log("Setting up Python environment first...")
+        if not cmd_setupenv(args):
+            return False
+    
+    # Apply the changeset
+    try:
+        script_path = paths.scripts / 'apply_changeset.py'
+    except NameError:
+        script_path = ROOT / 'scripts' / 'apply_changeset.py'
+    cmd = f'python3 "{script_path}" "{changeset_path}"'
+    return run_command(cmd, f"Applying changeset {changeset_name}")
+
+def cmd_usb(args):
+    """Create USB-ready EFI structure"""
+    log("Creating USB-ready EFI structure")
+    
+    # Ensure Python environment is set up
+    if not check_python_env():
+        log("Setting up Python environment first...")
+        if not cmd_setupenv(args):
+            return False
+    
+    script_path = ROOT / 'scripts' / 'create_usb_efi.py'
+    cmd_parts = [f'python3 "{script_path}"']
+    
+    if args.changeset:
+        changeset_name = args.changeset
+        if not changeset_name.endswith('.yaml'):
+            changeset_name = changeset_name.replace('.yaml', '')
+        cmd_parts.append(f'--changeset "{changeset_name}"')
+    
+    if args.output:
+        cmd_parts.append(f'--output "{args.output}"')
+    
+    if getattr(args, 'force', False):
+        cmd_parts.append('--force')
+    
+    cmd = ' '.join(cmd_parts)
+    return run_command(cmd, "Creating USB EFI structure")
+
+def cmd_proxmox(args):
+    """Deploy to Proxmox VM"""
+    log("Deploying to Proxmox VM")
+    
+    # Ensure Python environment is set up
+    if not check_python_env():
+        log("Setting up Python environment first...")
+        if not cmd_setupenv(args):
+            return False
+    
+    script_path = ROOT / 'scripts' / 'deploy.py'
+    cmd_parts = [f'python3 "{script_path}"']
+    
+    if args.changeset:
+        changeset_name = args.changeset
+        if changeset_name.endswith('.yaml'):
+            changeset_name = changeset_name.replace('.yaml', '')
+        cmd_parts.append(f'--changeset "{changeset_name}"')
+    
+    if getattr(args, 'rebuild', False):
+        cmd_parts.append('--rebuild')
+    
+    if getattr(args, 'build_only', False):
+        cmd_parts.append('--build-only')
+    
+    if getattr(args, 'status', False):
+        cmd_parts.append('--status')
+    
+    cmd = ' '.join(cmd_parts)
+    return run_command(cmd, "Deploying to Proxmox")
+
+def cmd_fetch(args):
+    """Fetch OpenCore assets"""
+    log("Fetching OpenCore assets")
+    
+    try:
+        fetch_script = paths.bin / 'fetch_assets.sh'
+    except NameError:
+        fetch_script = ROOT / 'bin' / 'fetch_assets.sh'
+    
+    if not fetch_script.exists():
+        error(f"Fetch script not found: {fetch_script}")
+        return False
+    
+    cmd = f'bash "{fetch_script}"'
+    return run_command(cmd, "Fetching OpenCore assets")
+
+def cmd_clean(args):
+    """Clean output and build directories"""
+    log("Cleaning output directories")
+    
+    try:
+        # Use path manager for cleaning
+        paths.clean_build_dirs()
+        log("Clean completed using path manager")
+        return True
+    except NameError:
+        # Fallback to manual cleaning
+        directories_to_clean = [
+            ROOT / 'out',
+            ROOT / 'out' / 'build'  # Clean new structure
+        ]
+    
+    for directory in directories_to_clean:
+        if directory.exists():
+            log(f"Cleaning {directory}")
+            cmd = f'rm -rf "{directory}"/*'
+            run_command(cmd, check=False)  # Don't fail if directory is empty
+    
+    log("Clean completed")
+    return True
+
+def cmd_smbios(args):
+    """Generate new SMBIOS data"""
+    if not args.changeset:
+        error("Changeset name is required")
+        info("Usage: ozzy smbios <changeset.yaml>")
+        return False
+    
+    # Ensure Python environment is set up
+    if not check_python_env():
+        log("Setting up Python environment first...")
+        if not cmd_setupenv(args):
+            return False
+    
+    changeset_name = args.changeset
+    if not changeset_name.endswith('.yaml'):
+        changeset_name += '.yaml'
+    
+    script_path = ROOT / 'scripts' / 'generate_smbios.py'
+    changeset_path = ROOT / 'config' / 'changesets' / changeset_name
+    
+    if not changeset_path.exists():
+        error(f"Changeset not found: {changeset_path}")
+        return False
+    
+    cmd = f'python3 "{script_path}" "{changeset_path}"'
+    return run_command(cmd, f"Generating SMBIOS for {changeset_name}")
+
+def cmd_serial(args):
+    """Generate serial numbers and UUIDs"""
+    log("Generating serial numbers and UUIDs")
+    
+    # Ensure Python environment is set up
+    if not check_python_env():
+        log("Setting up Python environment first...")
+        if not cmd_setupenv(args):
+            return False
+    
+    script_path = ROOT / 'scripts' / 'generate_serial.py'
+    cmd_parts = [f'python3 "{script_path}"']
+    
+    if args.changeset:
+        changeset_name = args.changeset
+        if changeset_name.endswith('.yaml'):
+            changeset_name = changeset_name.replace('.yaml', '')
+        cmd_parts.append(f'--changeset "{changeset_name}"')
+    
+    if getattr(args, 'force', False):
+        cmd_parts.append('--force')
+    
+    if getattr(args, 'list', False):
+        cmd_parts.append('--list')
+    
+    cmd = ' '.join(cmd_parts)
+    return run_command(cmd, "Generating serial numbers")
+
+def cmd_setupenv(args):
+    """Set up Python environment"""
+    log("Setting up Python environment")
+    
+    setup_script = ROOT / 'bin' / 'setup_env.sh'
+    if not setup_script.exists():
+        error(f"Setup script not found: {setup_script}")
+        return False
+    
+    cmd = f'bash "{setup_script}"'
+    return run_command(cmd, "Setting up Python environment")
+
+def cmd_status(args):
+    """Show project status"""
+    log("OpenCore Remote Deploy Status")
+    
+    # Check for key files and directories using path manager if available
+    try:
+        checks = [
+            ("Config directory", paths.config),
+            ("Changesets directory", paths.changesets),
+            ("Scripts directory", paths.scripts),
+            ("Assets directory", paths.assets),
+            ("Output directory", paths.out),
+            ("Build directory", paths.build),
+            ("EFI build directory", paths.efi_build),
+        ]
+    except NameError:
+        checks = [
+            ("Config directory", ROOT / 'config'),
+            ("Changesets directory", ROOT / 'config' / 'changesets'),
+            ("Scripts directory", ROOT / 'scripts'),
+            ("Assets directory", ROOT / 'assets'),
+            ("Output directory", ROOT / 'out'),
+            ("Build directory", ROOT / 'out' / 'build'),
+        ]
+    
+    for name, path in checks:
+        status = "✓" if path.exists() else "✗"
+        print(f"    {status} {name}: {path}")
+    
+    # List available changesets
+    try:
+        changesets_dir = paths.changesets
+    except NameError:
+        changesets_dir = ROOT / 'config' / 'changesets'
+    
+    if changesets_dir.exists():
+        changesets = list(changesets_dir.glob('*.yaml'))
+        if changesets:
+            print(f"\n{Colors.BLUE}Available Changesets:{Colors.NC}")
+            for cs in sorted(changesets):
+                print(f"    - {cs.stem}")
+        else:
+            print(f"\n{Colors.YELLOW}No changesets found{Colors.NC}")
+    
+    # Check Python environment
+    python_ok = check_python_env()
+    python_status = "✓" if python_ok else "✗"
+    print(f"\n    {python_status} Python environment ready")
+    
+    return True
+
+def cmd_list(args):
+    """List available changesets"""
+    try:
+        changesets_dir = paths.changesets
+    except NameError:
+        changesets_dir = ROOT / 'config' / 'changesets'
+    
+    if not changesets_dir.exists():
+        error("Changesets directory not found")
+        return False
+    
+    changesets = list(changesets_dir.glob('*.yaml'))
+    if not changesets:
+        warn("No changesets found")
+        return True
+    
+    log("Available changesets:")
+    for cs in sorted(changesets):
+        print(f"  - {cs.stem}")
+    
+    return True
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Ozzy - OpenCore Remote Deploy Master Script',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Commands:
+  apply     Apply a changeset to OpenCore configuration
+  usb       Create USB-ready EFI structure  
+  proxmox   Deploy to Proxmox VM
+  fetch     Fetch OpenCore assets
+  clean     Clean output directories
+  smbios    Generate SMBIOS data for changeset
+  serial    Generate serial numbers and UUIDs
+  setupenv  Set up Python environment
+  status    Show project status
+  list      List available changesets
+
+Examples:
+  ozzy apply ryzen3950x_rx580_AMDVanilla
+  ozzy usb --changeset ryzen3950x_rx580_AMDVanilla --output ./usb
+  ozzy proxmox --changeset ryzen3950x_rx580_AMDVanilla --rebuild
+  ozzy fetch
+  ozzy clean
+  ozzy smbios ryzen3950x_rx580_AMDVanilla
+  ozzy serial --changeset ryzen3950x_rx580_AMDVanilla --force
+  ozzy setupenv
+  ozzy status
+        """
+    )
+    
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    
+    # Apply command
+    apply_parser = subparsers.add_parser('apply', help='Apply changeset')
+    apply_parser.add_argument('changeset', help='Changeset name (with or without .yaml)')
+    
+    # USB command
+    usb_parser = subparsers.add_parser('usb', help='Create USB EFI')
+    usb_parser.add_argument('--changeset', '-c', help='Changeset to apply')
+    usb_parser.add_argument('--output', '-o', help='Output directory')
+    usb_parser.add_argument('--force', '-f', action='store_true', help='Force rebuild')
+    
+    # Proxmox command
+    proxmox_parser = subparsers.add_parser('proxmox', help='Deploy to Proxmox')
+    proxmox_parser.add_argument('--changeset', '-c', help='Changeset to apply')
+    proxmox_parser.add_argument('--rebuild', '-r', action='store_true', help='Force rebuild')
+    proxmox_parser.add_argument('--build-only', '-b', action='store_true', help='Build only')
+    proxmox_parser.add_argument('--status', '-s', action='store_true', help='Check status')
+    
+    # Fetch command
+    fetch_parser = subparsers.add_parser('fetch', help='Fetch OpenCore assets')
+    
+    # Clean command
+    clean_parser = subparsers.add_parser('clean', help='Clean output directories')
+    
+    # SMBIOS command
+    smbios_parser = subparsers.add_parser('smbios', help='Generate SMBIOS data')
+    smbios_parser.add_argument('changeset', help='Changeset name (with or without .yaml)')
+    
+    # Serial command
+    serial_parser = subparsers.add_parser('serial', help='Generate serial numbers')
+    serial_parser.add_argument('--changeset', '-c', help='Changeset to update')
+    serial_parser.add_argument('--force', '-f', action='store_true', help='Force generation')
+    serial_parser.add_argument('--list', '-l', action='store_true', help='List changesets')
+    
+    # Setup environment command
+    setupenv_parser = subparsers.add_parser('setupenv', help='Set up Python environment')
+    
+    # Status command
+    status_parser = subparsers.add_parser('status', help='Show project status')
+    
+    # List command
+    list_parser = subparsers.add_parser('list', help='List available changesets')
+    
+    args = parser.parse_args()
+    
+    if not args.command:
+        parser.print_help()
+        return 1
+    
+    # Command dispatch
+    commands = {
+        'apply': cmd_apply,
+        'usb': cmd_usb,
+        'proxmox': cmd_proxmox,
+        'fetch': cmd_fetch,
+        'clean': cmd_clean,
+        'smbios': cmd_smbios,
+        'serial': cmd_serial,
+        'setupenv': cmd_setupenv,
+        'status': cmd_status,
+        'list': cmd_list,
+    }
+    
+    command_func = commands.get(args.command)
+    if not command_func:
+        error(f"Unknown command: {args.command}")
+        return 1
+    
+    try:
+        success = command_func(args)
+        return 0 if success else 1
+    except KeyboardInterrupt:
+        warn("Operation cancelled by user")
+        return 1
+    except Exception as e:
+        error(f"Unexpected error: {e}")
+        return 1
+
+if __name__ == '__main__':
+    sys.exit(main())
