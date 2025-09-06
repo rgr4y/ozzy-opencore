@@ -279,7 +279,7 @@ def load_amd_vanilla_patches() -> Optional[List[Dict[str, Any]]]:
     
     if not patches_cache.exists():
         error(f"AMD Vanilla patches not found at {patches_cache}")
-        error("Run 'bin/fetch_assets.sh' first to download AMD Vanilla patches")
+        error("Run 'scripts/fetch-assets.py' first to download AMD Vanilla patches")
         return None
     
     try:

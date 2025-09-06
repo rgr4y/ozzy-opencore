@@ -110,7 +110,7 @@ def validate_and_generate_smbios(changeset_data):
         # Check if macserial is available
         if not check_macserial_available():
             print("[!] ERROR: macserial utility not found")
-            print("[!] Please run fetch_assets.sh to download OpenCore utilities")
+            print("[!] Please run scripts/fetch-assets.py to download OpenCore utilities")
             return False
         
         try:

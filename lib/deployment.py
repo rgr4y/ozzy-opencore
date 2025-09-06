@@ -53,11 +53,11 @@ def deploy_to_proxmox(changeset_name=None, force_rebuild=False):
         ocvalidate_path = paths.opencore_root / "Utilities" / "ocvalidate" / "ocvalidate"
         if not ocvalidate_path.exists():
             log("Fetching OpenCore assets for rebuild...")
-            fetch_script = ROOT / "bin" / "fetch_assets.sh"
+            fetch_script = ROOT / "scripts" / "fetch-assets.py"
             if fetch_script.exists():
-                run_command(f'bash "{fetch_script}"', "Fetching OpenCore assets")
+                run_command(f'python3 "{fetch_script}"', "Fetching OpenCore assets")
             else:
-                error("fetch_assets.sh not found")
+                error("fetch-assets.py not found")
                 return False
     else:
         # Check that OpenCore assets are available for validation

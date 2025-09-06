@@ -51,7 +51,7 @@ def generate-serial_for_changeset(changeset_name, force=False):
     # Check if macserial is available
     if not check_macserial_available():
         print("[!] ERROR: macserial utility not found")
-        print("[!] Please run bin/fetch_assets.sh to download OpenCore utilities")
+        print("[!] Please run scripts/fetch-assets.py to download OpenCore utilities")
         return False
     
     # Create a backup

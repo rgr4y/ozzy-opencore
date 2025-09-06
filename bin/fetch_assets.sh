@@ -162,8 +162,9 @@ os.makedirs(cache_dir, exist_ok=True)
 for k in cfg["kexts"]:
     repo = k["repo"]
     name = k["name"]
+    build_type = k.get("build_type", "RELEASE")  # Default to RELEASE if not specified
     
-    print(f"[*] Processing {name} from {repo}")
+    print(f"[*] Processing {name} from {repo} ({build_type} build)")
     
     try:
         # Get latest release info from GitHub API
@@ -171,16 +172,32 @@ for k in cfg["kexts"]:
         with urllib.request.urlopen(api_url) as response:
             release_data = json.load(response)
         
-        # Find the release asset (usually a .zip file)
+        # Find the release asset based on build type
         assets = release_data.get("assets", [])
         download_url = None
         asset_name = None
         
+        # Look for assets matching the build type preference
         for asset in assets:
             if asset["name"].endswith(".zip"):
-                download_url = asset["browser_download_url"]
-                asset_name = asset["name"]
-                break
+                # Check if this asset matches our build type preference
+                if build_type == "DEBUG" and "-DEBUG" in asset["name"]:
+                    download_url = asset["browser_download_url"]
+                    asset_name = asset["name"]
+                    break
+                elif build_type == "RELEASE" and ("-RELEASE" in asset["name"] or "-DEBUG" not in asset["name"]):
+                    download_url = asset["browser_download_url"] 
+                    asset_name = asset["name"]
+                    break
+        
+        # Fallback: if no specific build type found, take any zip
+        if not download_url:
+            for asset in assets:
+                if asset["name"].endswith(".zip"):
+                    download_url = asset["browser_download_url"]
+                    asset_name = asset["name"]
+                    print(f"[!] {build_type} build not found, using fallback: {asset_name}")
+                    break
         
         if not download_url:
             print(f"[!] No zip asset found for {name}, trying git approach...")

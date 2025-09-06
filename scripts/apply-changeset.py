@@ -289,6 +289,39 @@ def changeset_to_operations(changeset_data):
                 "value": value
             })
     
+    # Handle NVRAM settings
+    if 'nvram' in changeset_data:
+        nvram_data = changeset_data['nvram']
+        
+        # Handle NVRAM Add section
+        if 'add' in nvram_data:
+            for guid, variables in nvram_data['add'].items():
+                for var_name, var_value in variables.items():
+                    operations.append({
+                        "op": "set",
+                        "path": ["NVRAM", "Add", guid, var_name],
+                        "value": var_value
+                    })
+        
+        # Handle NVRAM Delete section
+        if 'delete' in nvram_data:
+            for guid, variables in nvram_data['delete'].items():
+                if isinstance(variables, list):
+                    # Set the delete array for this GUID
+                    operations.append({
+                        "op": "set",
+                        "path": ["NVRAM", "Delete", guid],
+                        "value": variables
+                    })
+        
+        # Handle WriteFlash setting
+        if 'write_flash' in nvram_data:
+            operations.append({
+                "op": "set", 
+                "path": ["NVRAM", "WriteFlash"],
+                "value": nvram_data['write_flash']
+            })
+    
     return operations
 
 def post_process_config(config_path):
@@ -322,6 +355,20 @@ def post_process_config(config_path):
                     except:
                         # If it's not valid base64, leave it as string
                         pass
+    
+    # Convert NVRAM base64 strings to binary data
+    if 'NVRAM' in config and 'Add' in config['NVRAM']:
+        for guid, variables in config['NVRAM']['Add'].items():
+            for var_name, var_value in variables.items():
+                if isinstance(var_value, str):
+                    # Special handling for known binary fields
+                    if var_name in ['DefaultBackgroundColor', 'csr-active-config', 'prev-lang:kbd']:
+                        try:
+                            # Convert base64 string to binary data
+                            variables[var_name] = base64.b64decode(var_value)
+                        except:
+                            # If it's not valid base64, leave it as string
+                            pass
     
     # Remove warning keys
     warning_keys = [key for key in config.keys() if key.startswith('#WARNING')]

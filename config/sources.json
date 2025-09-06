@@ -25,7 +25,8 @@
     },
     {
       "name": "NVMeFix.kext",
-      "repo": "acidanthera/NVMeFix"
+      "repo": "acidanthera/NVMeFix",
+      "build_type": "DEBUG"
     },
     {
       "name": "VirtualSMC.kext",

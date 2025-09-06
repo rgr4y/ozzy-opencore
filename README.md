@@ -129,7 +129,7 @@ The `ozzy` script provides a unified interface for all operations:
 - `./deploy --rebuild` - Force rebuild of ISO before deployment
 - `./deploy --help` - Show all available options
 
-./bin/fetch_assets.sh
+./scripts/fetch-assets.py
 
 Patch your OpenCore config from a declarative change-set (dry-run first):
 

@@ -194,9 +194,9 @@ def cmd_switch(args):
 # Utility commands
 def cmd_fetch(args):
     """Fetch OpenCore assets"""
-    script = ROOT / "bin" / "fetch_assets.sh"
+    script = ROOT / "scripts" / "fetch-assets.py"
     try:
-        result = subprocess.run(['bash', str(script)], cwd=ROOT, check=True)
+        result = subprocess.run([sys.executable, str(script)], cwd=ROOT, check=True)
         return True
     except subprocess.CalledProcessError:
         return False
@@ -257,13 +257,13 @@ def cmd_status(args):
     return True
 
 def cmd_mount_efi(args):
-    """Mount EFI partition from Install USB"""
+    """Mount EFI partition from Install USB or USB drives with EFI partitions"""
     import subprocess
     import glob
     
-    log("Mounting EFI partition from Install USB...")
+    log("Scanning for USB drives with EFI partitions...")
     
-    # Find Install volumes
+    # First priority: Find Install volumes
     volumes_pattern = "/Volumes/Install*"
     install_volumes = []
     
@@ -274,45 +274,124 @@ def cmd_mount_efi(args):
             log(f"Found Install volume: {volume}")
             install_volumes.append(volume)
     
-    if not install_volumes:
-        error("!!! Install USB not found -- either plug it in and try again, or check if EFI partition exists !!!")
-        return False
-    
-    if len(install_volumes) > 1:
-        warn("Multiple Install volumes found:")
-        for i, volume in enumerate(install_volumes, 1):
-            warn(f"  {i}. {volume}")
-        warn("Using the first one found")
-    
-    # Use the first Install volume
-    install_volume = install_volumes[0]
-    log(f"Using Install volume: {install_volume}")
-    
-    # Get disk identifier
-    try:
-        result = subprocess.run(['diskutil', 'info', str(install_volume)], 
-                              capture_output=True, text=True, check=True)
+    # If Install volumes found, use them (original behavior)
+    if install_volumes:
+        if len(install_volumes) > 1:
+            log("Multiple Install volumes found:")
+            for i, volume in enumerate(install_volumes, 1):
+                log(f"  {i}. {volume}")
+            log("Using the first one found")
         
-        disk_id = None
-        for line in result.stdout.split('\n'):
-            if 'Device Identifier:' in line:
-                disk_id = line.split(':')[1].strip()
-                break
-                
-        if not disk_id:
-            error("Could not determine disk identifier")
-            return False
+        # Use the first Install volume
+        install_volume = install_volumes[0]
+        log(f"Using Install volume: {install_volume}")
+        
+        # Get disk identifier
+        try:
+            result = subprocess.run(['diskutil', 'info', str(install_volume)], 
+                                  capture_output=True, text=True, check=True)
             
-    except subprocess.CalledProcessError as e:
-        error(f"Failed to get disk info for {install_volume}: {e.stderr}")
-        return False
+            disk_id = None
+            for line in result.stdout.split('\n'):
+                if 'Device Identifier:' in line:
+                    disk_id = line.split(':')[1].strip()
+                    break
+                    
+            if not disk_id:
+                error("Could not determine disk identifier")
+                return False
+                
+        except subprocess.CalledProcessError as e:
+            error(f"Failed to get disk info for {install_volume}: {e.stderr}")
+            return False
+        
+        # Extract base disk (e.g., disk2s2 -> disk2)
+        selected_disk = disk_id.rsplit('s', 1)[0]
+        log(f"Using disk from Install volume: {selected_disk}")
+        
+    else:
+        # Fallback: Look for USB drives with EFI partitions only
+        log("No Install volumes found, scanning for USB drives with EFI partitions...")
+        usb_disks = []
+        
+        try:
+            # Get list of all disks
+            result = subprocess.run(['diskutil', 'list'], capture_output=True, text=True, check=True)
+            
+            # Parse diskutil output to find USB/external disks
+            current_disk = None
+            for line in result.stdout.split('\n'):
+                line = line.strip()
+                if line.startswith('/dev/disk'):
+                    current_disk = line.split()[0].replace('/dev/', '')
+                elif current_disk and ('external' in line.lower() or 'usb' in line.lower()):
+                    # Get detailed info about this disk
+                    try:
+                        disk_info = subprocess.run(['diskutil', 'info', current_disk], 
+                                                 capture_output=True, text=True, check=True)
+                        
+                        # Check if it's removable/external (USB only, not internal drives)
+                        is_removable = False
+                        protocol_usb = False
+                        for info_line in disk_info.stdout.split('\n'):
+                            if 'Removable Media:' in info_line and 'Yes' in info_line:
+                                is_removable = True
+                            if 'Protocol:' in info_line and 'USB' in info_line:
+                                protocol_usb = True
+                        
+                        # Only consider USB drives, not other external drives like Thunderbolt
+                        if is_removable and protocol_usb:
+                            # Check if this disk has an EFI partition (s1)
+                            efi_partition = f"{current_disk}s1"
+                            try:
+                                efi_info = subprocess.run(['diskutil', 'info', efi_partition], 
+                                                        capture_output=True, text=True, check=True)
+                                
+                                # Check if it's an EFI partition
+                                is_efi = False
+                                for efi_line in efi_info.stdout.split('\n'):
+                                    if ('File System Personality:' in efi_line and 'FAT32' in efi_line) or \
+                                       ('Volume Name:' in efi_line and 'EFI' in efi_line) or \
+                                       ('Partition Type:' in efi_line and 'EFI' in efi_line):
+                                        is_efi = True
+                                        break
+                                
+                                if is_efi:
+                                    log(f"Found USB drive with EFI partition: {current_disk}")
+                                    usb_disks.append(current_disk)
+                                    
+                            except subprocess.CalledProcessError:
+                                # No EFI partition found on this disk
+                                pass
+                                
+                    except subprocess.CalledProcessError:
+                        # Failed to get disk info
+                        pass
+                        
+        except subprocess.CalledProcessError as e:
+            warn(f"Failed to scan for USB drives: {e}")
+        
+        if not usb_disks:
+            error("!!! No Install USB or USB drives with EFI partitions found !!!")
+            error("    Either plug in a USB drive with an EFI partition, or check if EFI partition exists")
+            return False
+        
+        # Select USB disk to use
+        if len(usb_disks) > 1:
+            log("Multiple USB drives with EFI partitions found:")
+            for i, disk in enumerate(usb_disks, 1):
+                log(f"  {i}. USB drive: /dev/{disk}")
+            log("Using the first one found")
+        
+        selected_disk = usb_disks[0]
+        log(f"Using USB drive: {selected_disk}")
     
-    # Extract base disk (e.g., disk2s2 -> disk2)
-    base_disk = disk_id.rsplit('s', 1)[0]
-    log(f"Base disk: {base_disk}")
+    # Common EFI mounting logic for both Install volumes and USB drives
+    
+    log(f"Using disk: {selected_disk}")
     
     # Check if EFI partition exists
-    efi_disk_id = f"{base_disk}s1"  # EFI is usually partition 1
+    efi_disk_id = f"{selected_disk}s1"  # EFI is usually partition 1
     
     try:
         result = subprocess.run(['diskutil', 'info', efi_disk_id], 

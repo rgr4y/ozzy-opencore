@@ -46,15 +46,42 @@ def populate_efi_assets(changeset_name):
     # Copy kexts
     if 'kexts' in changeset_data:
         log("Copying kexts...")
+        
+        # Load sources.json to get build types
+        sources_path = ROOT / "config" / "sources.json"
+        kext_build_types = {}
+        if sources_path.exists():
+            import json
+            with open(sources_path) as f:
+                sources_data = json.load(f)
+                for kext_config in sources_data.get('kexts', []):
+                    kext_name = kext_config['name']
+                    build_type = kext_config.get('build_type', 'RELEASE').lower()
+                    kext_build_types[kext_name] = build_type
+        
         for kext in changeset_data['kexts']:
             kext_name = kext['bundle']
-            # Look for kext in various possible locations
-            source_locations = [
+            build_type = kext_build_types.get(kext_name, 'release')
+            
+            # Look for kext in various possible locations with build type awareness
+            source_locations = []
+            
+            # First try the new build-type specific directories
+            for repo_suffix in ["acidanthera_Lilu", "acidanthera_NVMeFix", "acidanthera_VirtualSMC", 
+                               "acidanthera_WhateverGreen", "acidanthera_RestrictEvents", "acidanthera_AppleALC"]:
+                if kext_name.replace('.kext', '').lower() in repo_suffix.lower():
+                    source_locations.extend([
+                        ROOT / "out" / f"kext-{build_type}-{repo_suffix}" / kext_name,
+                        ROOT / "out" / f"kext-{build_type}-{repo_suffix}" / "Kexts" / kext_name,  # VirtualSMC layout
+                    ])
+            
+            # Fallback to old patterns and generic patterns
+            source_locations.extend([
                 ROOT / "out" / f"kext-release-acidanthera_{kext_name.replace('.kext', '')}" / kext_name,
                 ROOT / "out" / f"kext-release-acidanthera_{kext_name.replace('.kext', '')}" / "Kexts" / kext_name,  # VirtualSMC layout
                 ROOT / "out" / f"kext-{kext_name.replace('.kext', '')}" / kext_name,
                 ROOT / "assets" / kext_name
-            ]
+            ])
             
             # Special handling for AppleMCEReporterDisabler.kext zip file
             if kext_name == "AppleMCEReporterDisabler.kext":

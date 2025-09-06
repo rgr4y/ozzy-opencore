@@ -121,11 +121,11 @@ def create_usb_efi(changeset_name=None, output_dir=None, force_rebuild=False, dr
                 print("[DRY RUN] Would fetch OpenCore assets for rebuild...")
             else:
                 print("[*] Fetching OpenCore assets for rebuild...")
-                fetch_script = paths.bin / "fetch_assets.sh"
+                fetch_script = paths.root / "scripts" / "fetch-assets.py"
                 if fetch_script.exists():
-                    run(f'bash "{fetch_script}"')
+                    run(f'python3 "{fetch_script}"')
                 else:
-                    print("[!] ERROR: fetch_assets.sh not found")
+                    print("[!] ERROR: fetch-assets.py not found")
                     raise SystemExit("Cannot fetch assets for rebuild")
     
     # Apply changeset if specified
