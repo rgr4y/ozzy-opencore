@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.11
 import sys, argparse, yaml, json, shutil, base64
 from pathlib import Path
 import subprocess

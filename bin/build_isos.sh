@@ -10,6 +10,7 @@ build_iso() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
     TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
     cp -a "$SRC"/* "$TMP/"  # Copy contents, not the directory itself
+    rm -f $OUTISO || true
     hdiutil makehybrid -iso -joliet -default-volume-name "$VOL" -o "$OUTISO" "$TMP"
   else
     command -v xorriso >/dev/null 2>&1 || { echo "xorriso required on Linux"; exit 1; }

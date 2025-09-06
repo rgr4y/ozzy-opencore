@@ -19,11 +19,11 @@ mkdir -p "$BUILD/efi/EFI/OC/ACPI"
 need(){ command -v "$1" >/dev/null 2>&1 || { echo "Missing $1"; exit 1; }; }
 need git; need unzip; need python3
 
-OC_VER=$(python3 - <<'PY' "$SRC"
+OC_VER=$(python3.11 - <<'PY' "$SRC"
 import json,sys; print(json.load(open(sys.argv[1]))["opencore"]["version"])
 PY
 )
-OC_REPO=$(python3 - <<'PY' "$SRC"
+OC_REPO=$(python3.11 - <<'PY' "$SRC"
 import json,sys; print(json.load(open(sys.argv[1]))["opencore"]["repo"])
 PY
 )
@@ -151,7 +151,7 @@ for p in "$OC_FILES_DIR/EFI/OC/Tools/ResetNvramEntry.efi" "$OC_FILES_DIR/EFI/OC/
 done
 
 echo "[*] Fetching kexts via GitHub releases"
-python3 - "$SRC" "$OUT" "$BUILD/efi/EFI/OC/Kexts" <<'PY'
+python3.11 - "$SRC" "$OUT" "$BUILD/efi/EFI/OC/Kexts" <<'PY'
 import sys,json,os,subprocess,shutil,urllib.request,zipfile,tempfile,hashlib
 cfg=json.load(open(sys.argv[1])); out=sys.argv[2]; dst=sys.argv[3]
 
@@ -295,6 +295,49 @@ for driver in drivers:
         print(f"[✓] Copied {driver_name} from OcBinaryData")
     else:
         print(f"[!] {driver_name} not found at {driver_path} in OcBinaryData repository")
+PY
+
+echo "[*] Fetching AMD Vanilla patches"
+python3 - "$SRC" "$OUT" <<'PY'
+import sys,json,os,subprocess,shutil
+
+src_path, out_dir = sys.argv[1], sys.argv[2]
+with open(src_path) as f:
+    sources = json.load(f)
+
+if 'amd_vanilla' not in sources:
+    print("[*] No AMD Vanilla sources configured")
+    sys.exit(0)
+
+amd_config = sources['amd_vanilla']
+repo = amd_config['repo']
+branch = amd_config.get('branch', 'master')
+patches_file = amd_config.get('patches_file', 'patches.plist')
+
+# Clone or update AMD Vanilla repository
+repo_dir = os.path.join(out_dir, 'amd-vanilla-repo')
+if not os.path.exists(repo_dir):
+    print(f"[*] Cloning {repo} repository (shallow)...")
+    subprocess.run(['git', 'clone', '--depth', '1', '--branch', branch, f'https://github.com/{repo}.git', repo_dir], check=True)
+else:
+    print(f"[*] Updating {repo} repository...")
+    subprocess.run(['git', '-C', repo_dir, 'fetch', '--depth', '1', 'origin', branch], check=True)
+    subprocess.run(['git', '-C', repo_dir, 'reset', '--hard', f'origin/{branch}'], check=True)
+
+# Verify patches file exists
+patches_path = os.path.join(repo_dir, patches_file)
+if os.path.exists(patches_path):
+    print(f"[✓] AMD Vanilla patches available at {patches_path}")
+    
+    # Create a symlink or copy to a known location for easy access
+    patches_cache = os.path.join(out_dir, 'amd-vanilla-patches.plist')
+    if os.path.exists(patches_cache) or os.path.islink(patches_cache):
+        os.remove(patches_cache)
+    shutil.copy2(patches_path, patches_cache)
+    print(f"[✓] Cached AMD Vanilla patches as {patches_cache}")
+else:
+    print(f"[!] {patches_file} not found in AMD Vanilla repository")
+    sys.exit(1)
 PY
 
 echo "[*] Assets ready."

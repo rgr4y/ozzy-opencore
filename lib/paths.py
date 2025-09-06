@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.11
 """
 Path Management Library for OpenCore Remote Deploy
 
@@ -61,27 +61,32 @@ class PathManager:
         """Library directory"""
         return self.root / "lib"
     
-    # Build and work directories (now under out/)
+    # Build and work directories (organized under out/)
     
     @property
-    def build(self) -> Path:
-        """Main build directory - replaces efi-build"""
+    def build_root(self) -> Path:
+        """Main build directory - all build outputs"""
         return self.out / "build"
     
     @property
     def efi_build(self) -> Path:
         """EFI build directory - primary OpenCore build location"""
-        return self.build / "efi"
+        return self.out / "efi"
     
     @property
     def usb_build(self) -> Path:
-        """USB build directory - replaces usb-efi"""
-        return self.build / "usb"
+        """USB build directory"""
+        return self.out / "usb"
     
     @property
     def iso_build(self) -> Path:
         """ISO build directory"""
-        return self.build / "iso"
+        return self.out / "iso"
+    
+    @property
+    def logs_dir(self) -> Path:
+        """Build logs directory"""
+        return self.out / "logs"
     
     # OpenCore specific paths
     
@@ -89,6 +94,11 @@ class PathManager:
     def opencore_release(self) -> Path:
         """Downloaded OpenCore release directory"""
         return self.out / "opencore"
+    
+    @property
+    def opencore_root(self) -> Path:
+        """Alias for opencore_release"""
+        return self.opencore_release
     
     @property
     def opencore_repo(self) -> Path:

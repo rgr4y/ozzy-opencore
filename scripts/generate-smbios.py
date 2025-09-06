@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.11
 """
 Refactored generate_smbios.py using common libraries.
 
@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 # Import our common libraries
-sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from lib import (
     log, warn, error,
     validate_and_generate_smbios,
@@ -19,16 +19,15 @@ from lib import (
 
 def main():
     if len(sys.argv) != 2:
-        print("Usage: generate_smbios.py <changeset_file>")
+        print("Usage: generate_smbios.py <changeset_name>")
         sys.exit(1)
     
-    changeset_file = Path(sys.argv[1])
+    changeset_name = sys.argv[1]
+    changeset_file = get_changeset_path(changeset_name)
+    
     if not changeset_file.exists():
         error(f"Changeset file not found: {changeset_file}")
         sys.exit(1)
-    
-    # Extract changeset name from path
-    changeset_name = changeset_file.stem
     
     # Load changeset using our library
     changeset_data = load_changeset(changeset_name)

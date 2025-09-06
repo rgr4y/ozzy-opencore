@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.11
 
 import sys
 import plistlib
@@ -286,7 +286,7 @@ def read_config_plist(plist_path):
 
 def main():
     if len(sys.argv) != 2:
-        print("Usage: python3 read_config.py <config.plist>")
+        print("Usage: python3 read-config.py <config.plist>")
         sys.exit(1)
     
     plist_path = sys.argv[1]

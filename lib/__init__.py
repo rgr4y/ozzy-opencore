@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.11
 """
 Init file for the OpenCore deployment library.
 
@@ -45,11 +45,6 @@ from .changeset import (
     validate_kext_availability
 )
 
-from .deployment import (
-    build_opencore_iso, deploy_to_proxmox,
-    check_deployment_status, build_iso_only
-)
-
 from .paths import paths
 
 __version__ = "1.0.0"
@@ -88,10 +83,6 @@ __all__ = [
     'extract_changeset_section', 'update_changeset_section',
     'remove_changeset_section', 'list_changeset_kexts',
     'validate_kext_availability',
-    
-    # Deployment operations
-    'build_opencore_iso', 'deploy_to_proxmox',
-    'check_deployment_status', 'build_iso_only',
     
     # Path management
     'paths'

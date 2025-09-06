@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.11
 """
 Refactored create_usb_efi.py using common libraries.
 
@@ -13,7 +13,7 @@ import shutil
 from pathlib import Path
 
 # Import our common libraries
-sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from lib import (
     ROOT, log, warn, error, info,
     load_config, run_command, 
@@ -83,7 +83,7 @@ def create_usb_efi(changeset_name=None, output_dir=None, force_rebuild=False, dr
         log(f"Applying changeset: {changeset_name}")
         if not dry_run:
             # Apply changeset using existing script
-            cmd = [sys.executable, str(paths['scripts'] / "apply_changeset.py"), str(changeset_path)]
+            cmd = [sys.executable, str(paths['scripts'] / "apply-changeset.py"), changeset_name]
             try:
                 subprocess.check_call(cmd, cwd=ROOT)
             except subprocess.CalledProcessError as e:

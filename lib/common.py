@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.11
 """
 Common utilities and helper functions for OpenCore deployment scripts.
 
@@ -176,9 +176,9 @@ def get_project_paths():
         'scripts': ROOT / 'scripts',
         'assets': ROOT / 'assets',
         'out': ROOT / 'out',
-        'efi_build': ROOT / 'efi-build',
-        'efi_oc': ROOT / 'efi-build' / 'EFI' / 'OC',
-        'usb_efi': ROOT / 'usb-efi',
+        'efi_build': ROOT / 'out' / 'efi',
+        'efi_oc': ROOT / 'out' / 'efi' / 'EFI' / 'OC',
+        'usb_efi': ROOT / 'out' / 'build' / 'usb',
         'deploy_env': ROOT / 'config' / 'deploy.env',
         'sources_json': ROOT / 'config' / 'sources.json',
     }

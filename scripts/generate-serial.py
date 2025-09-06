@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.11
 """
-Refactored generate_serial.py using common libraries.
+Refactored generate-serial.py using common libraries.
 
 This script provides a command-line interface for generating SMBIOS serial numbers
 and UUIDs for OpenCore changesets.
@@ -11,9 +11,9 @@ import argparse
 from pathlib import Path
 
 # Import our common libraries
-sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from lib import (
-    log, warn, error, info,
+    ROOT, log, warn, error, info,
     list_available_changesets,
     load_changeset, save_changeset,
     validate_and_generate_smbios, get_smbios_info,
@@ -81,17 +81,17 @@ def main():
         epilog='''
 Examples:
   # Generate SMBIOS for a specific changeset (only if placeholders detected)
-  python3 scripts/generate_serial.py --changeset ryzen3950x_rx580_mac
-  
+  python3.11 scripts/generate-serial.py ryzen3950x_rx580_mac
+
   # Force generation of new SMBIOS data
-  python3 scripts/generate_serial.py --changeset ryzen3950x_rx580_mac --force
-  
+  python3.11 scripts/generate-serial.py ryzen3950x_rx580_mac --force
+
   # List available changesets
-  python3 scripts/generate_serial.py --list
+  python3.11 scripts/generate-serial.py --list
         ''',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument('--changeset', '-c',
+    parser.add_argument('changeset', nargs='?',
                        help='Name of the changeset to generate SMBIOS for')
     parser.add_argument('--force', '-f', action='store_true',
                        help='Force generation of new SMBIOS data even if current values are not placeholders')
@@ -111,7 +111,7 @@ Examples:
         return 0
     
     if not args.changeset:
-        error("Changeset name is required (use --changeset or --list)")
+        error("Changeset name is required (provide changeset argument or use --list)")
         parser.print_help()
         return 1
     

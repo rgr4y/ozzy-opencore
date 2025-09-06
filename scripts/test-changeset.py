@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.11
 
 import os
 import sys
@@ -6,6 +6,7 @@ import yaml
 from pathlib import Path
 
 # Add parent directory to path to import deploy
+# TODO: Refactor to use lib paths
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
 ROOT = Path(__file__).resolve().parents[1]

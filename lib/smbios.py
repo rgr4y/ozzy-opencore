@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.11
 """
 SMBIOS generation and validation utilities for OpenCore configurations.
 

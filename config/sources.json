@@ -4,6 +4,11 @@
     "repo": "acidanthera/OpenCorePkg",
     "asset_glob": "OpenCore-1.0.5-RELEASE.zip"
   },
+  "amd_vanilla": {
+    "repo": "AMD-OSX/AMD_Vanilla",
+    "branch": "master",
+    "patches_file": "patches.plist"
+  },
   "ocbinarydata": {
     "repo": "acidanthera/OcBinaryData",
     "drivers": [

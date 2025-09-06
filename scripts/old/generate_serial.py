@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.11
 
 import sys
 import argparse
@@ -11,7 +11,7 @@ from generate_smbios import validate_and_generate_smbios, check_macserial_availa
 
 ROOT = Path(__file__).resolve().parents[1]
 
-def generate_serial_for_changeset(changeset_name, force=False):
+def generate-serial_for_changeset(changeset_name, force=False):
     """Generate SMBIOS serial numbers for a specific changeset"""
     
     changeset_file = ROOT / 'config' / 'changesets' / f'{changeset_name}.yaml'
@@ -124,13 +124,13 @@ def main():
         epilog='''
 Examples:
   # Generate SMBIOS for a specific changeset (only if placeholders detected)
-  python3 scripts/generate_serial.py --changeset ryzen3950x_rx580_mac
+  python3.11 scripts/generate-serial.py --changeset ryzen3950x_rx580_mac
   
   # Force generation of new SMBIOS data
-  python3 scripts/generate_serial.py --changeset ryzen3950x_rx580_mac --force
-  
+  python3.11 scripts/generate-serial.py --changeset ryzen3950x_rx580_mac --force
+
   # List available changesets
-  python3 scripts/generate_serial.py --list
+  python3.11 scripts/generate-serial.py --list
         ''',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -160,7 +160,7 @@ Examples:
         sys.exit(1)
     
     try:
-        success = generate_serial_for_changeset(args.changeset, force=args.force)
+        success = generate-serial_for_changeset(args.changeset, force=args.force)
         if not success:
             sys.exit(1)
     except KeyboardInterrupt:

@@ -1,4 +1,0 @@
-#!/bin/bash
-# Deployment wrapper script
-cd "$(dirname "$0")"
-python3 scripts/deploy.py "$@"
