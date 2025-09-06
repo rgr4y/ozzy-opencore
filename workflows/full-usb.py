@@ -123,12 +123,25 @@ def populate_efi_assets(changeset_name):
     if 'acpi_add' in changeset_data:
         log("Copying ACPI files...")
         for acpi_file in changeset_data['acpi_add']:
-            source_acpi = ROOT / "assets" / acpi_file
-            if source_acpi.exists():
+            # Look for ACPI files in multiple locations
+            source_locations = [
+                ROOT / "assets" / acpi_file,
+                ROOT / "out" / "opencore" / "Docs" / "AcpiSamples" / "Binaries" / acpi_file,
+                ROOT / "out" / "opencore" / "AcpiSamples" / "Binaries" / acpi_file,
+                ROOT / "out" / "acpi" / acpi_file
+            ]
+            
+            source_acpi = None
+            for location in source_locations:
+                if location.exists():
+                    source_acpi = location
+                    break
+            
+            if source_acpi:
                 target_acpi = oc_dir / "ACPI" / acpi_file
                 run_command(f'cp "{source_acpi}" "{target_acpi}"', f"Copying {acpi_file}")
             else:
-                warn(f"ACPI file not found: {acpi_file}")
+                warn(f"ACPI file not found: {acpi_file} (searched in {len(source_locations)} locations)")
     
     # Copy OpenCore bootloader
     log("Copying OpenCore bootloader...")

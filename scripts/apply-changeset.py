@@ -307,12 +307,12 @@ def post_process_config(config_path):
                 
         config['ACPI']['Add'] = filtered_entries
     
-    # Clear sample Kernel entries - keep only enabled ones or fix missing ExecutablePath
+    # Clear sample Kernel entries - keep only enabled ones from changeset
     if 'Kernel' in config and 'Add' in config['Kernel']:
         filtered_entries = []
         for entry in config['Kernel']['Add']:
-            # Only keep entries that are enabled, or fix sample entries missing ExecutablePath
-            if entry.get('Enabled', True):
+            # Only keep entries that are explicitly enabled (True), not default enabled
+            if entry.get('Enabled') is True:
                 # Ensure ExecutablePath exists, add empty string if missing
                 if 'ExecutablePath' not in entry:
                     entry['ExecutablePath'] = ""
