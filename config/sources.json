@@ -24,6 +24,10 @@
       "repo": "acidanthera/Lilu"
     },
     {
+      "name": "NVMeFix.kext",
+      "repo": "acidanthera/NVMeFix"
+    },
+    {
       "name": "VirtualSMC.kext",
       "repo": "acidanthera/VirtualSMC"
     },

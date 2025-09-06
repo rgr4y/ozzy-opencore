@@ -146,7 +146,7 @@ fi
 [ -f "$OC_FILES_DIR/EFI/OC/Tools/OpenShell.efi" ] && cp -av "$OC_FILES_DIR/EFI/OC/Tools/OpenShell.efi" "$BUILD/efi/EFI/OC/Tools/"
 
 # ResetNvramEntry.efi can be in different locations
-for p in "$OC_FILES_DIR/EFI/OC/Tools/ResetNvramEntry.efi" "$OC_FILES_DIR/EFI/OC/Drivers/ResetNvramEntry.efi"; do
+for p in "$OC_FILES_DIR/EFI/OC/Tools/CleanNvram.efi"; do
   [ -f "$p" ] && cp -av "$p" "$BUILD/efi/EFI/OC/Tools/"
 done
 

@@ -393,7 +393,7 @@ def create_usb_efi(changeset_name=None, output_dir=None, force_rebuild=False, dr
             f.write(f"EFI/\\n")
             f.write(f"├── BOOT/\\n")
             f.write(f"│   └── BOOTx64.efi              # UEFI bootloader\\n")
-            f.write(f"└── OC/\\n")
+            f.write(f"└── EFI/OC/\\n")
             f.write(f"    ├── ACPI/\\n")
             f.write(f"    │   ├── SSDT-EC-USBX.aml     # USB & EC fix\\n")
             f.write(f"    │   └── SSDT-AWAC-DISABLE.aml # System clock fix\\n")

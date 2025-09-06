@@ -9,6 +9,8 @@ This is one of the main workflows requested by the user.
 import sys
 import subprocess
 import argparse
+import glob
+import os
 from pathlib import Path
 
 # Import our common libraries
@@ -27,12 +29,19 @@ def populate_efi_assets(changeset_name):
     efi_base = ROOT / "out" / "efi" / "EFI"
     oc_dir = efi_base / "OC"
     
-    # Ensure directories exist
+    # Ensure directories exist and clean up any old kext files
     (oc_dir / "Kexts").mkdir(parents=True, exist_ok=True)
     (oc_dir / "Drivers").mkdir(parents=True, exist_ok=True)
     (oc_dir / "Tools").mkdir(parents=True, exist_ok=True)
     (oc_dir / "ACPI").mkdir(parents=True, exist_ok=True)
     (efi_base / "BOOT").mkdir(parents=True, exist_ok=True)
+    
+    # Clean up existing kext directory to ensure only changeset kexts are present
+    import shutil
+    kexts_dir = oc_dir / "Kexts"
+    if kexts_dir.exists():
+        shutil.rmtree(kexts_dir)
+    kexts_dir.mkdir(parents=True, exist_ok=True)
     
     # Copy kexts
     if 'kexts' in changeset_data:
@@ -143,35 +152,28 @@ def populate_efi_assets(changeset_name):
             else:
                 warn(f"ACPI file not found: {acpi_file} (searched in {len(source_locations)} locations)")
     
-    # Copy OpenCore bootloader
+    # Copy OpenCore bootloader files correctly
     log("Copying OpenCore bootloader...")
-    bootloader_locations = [
-        ROOT / "out" / "opencore" / "X64" / "EFI" / "OC" / "OpenCore.efi",
-        ROOT / "out" / "opencore" / "X64" / "EFI" / "BOOT" / "BOOTx64.efi",
-        ROOT / "out" / "opencore" / "Drivers" / "OpenCore.efi"
-    ]
     
-    bootloader_source = None
-    for location in bootloader_locations:
-        if location.exists():
-            bootloader_source = location
-            break
+    # Copy the proper UEFI boot stub (BOOTx64.efi) 
+    bootx64_source = ROOT / "out" / "opencore" / "X64" / "EFI" / "BOOT" / "BOOTx64.efi"
+    target_bootloader = efi_base / "BOOT" / "BOOTx64.efi"
     
-    if bootloader_source:
-        target_bootloader = efi_base / "BOOT" / "BOOTx64.efi"
-        target_oc = oc_dir / "OpenCore.efi"
-        run_command(f'cp "{bootloader_source}" "{target_bootloader}"', "Copying OpenCore bootloader to BOOT")
-        if bootloader_source.name == "OpenCore.efi":
-            run_command(f'cp "{bootloader_source}" "{target_oc}"', "Copying OpenCore.efi to OC")
-        else:
-            # If we found BOOTx64.efi, also look for OpenCore.efi
-            oc_efi_source = bootloader_source.parent.parent / "OC" / "OpenCore.efi"
-            if oc_efi_source.exists():
-                run_command(f'cp "{oc_efi_source}" "{target_oc}"', "Copying OpenCore.efi to OC")
+    if bootx64_source.exists():
+        run_command(f'cp "{bootx64_source}" "{target_bootloader}"', "Copying OpenCore bootloader to BOOT")
     else:
-        warn("OpenCore bootloader not found")
+        warn(f"BOOTx64.efi not found at {bootx64_source}")
+    
+    # Copy OpenCore.efi to OC directory
+    opencore_source = ROOT / "out" / "opencore" / "X64" / "EFI" / "OC" / "OpenCore.efi"
+    target_oc = oc_dir / "OpenCore.efi"
+    
+    if opencore_source.exists():
+        run_command(f'cp "{opencore_source}" "{target_oc}"', "Copying OpenCore.efi to OC")
+    else:
+        warn(f"OpenCore.efi not found at {opencore_source}")
 
-def full_usb_workflow(changeset_name, output_path=None, force=False):
+def full_usb_workflow(changeset_name, output_path=None, force=False, eject=False):
     """Execute the full USB workflow: changeset → ISO → USB → Deploy"""
     
     log(f"Starting full USB workflow for changeset: {changeset_name}")
@@ -234,6 +236,7 @@ def full_usb_workflow(changeset_name, output_path=None, force=False):
         return False
     
     # Step 4: Deploy to USB (if Install volume is available)
+    log("------------------------------------------------")
     log("Step 4/4: Deploying EFI to USB Install volume...")
     deploy_usb_script = ROOT / "scripts" / "deploy-usb.py"
     cmd = [sys.executable, str(deploy_usb_script)]
@@ -241,13 +244,34 @@ def full_usb_workflow(changeset_name, output_path=None, force=False):
     try:
         result = subprocess.run(cmd, cwd=ROOT, check=True)
         log("✓ EFI deployed to USB successfully")
+        
+        # Eject volumes if requested
+        if eject:
+            log("Ejecting volumes...")
+            try:
+                # Find and eject Install volumes
+                install_volumes = glob.glob("/Volumes/Install*")
+                for volume in install_volumes:
+                    log(f"Ejecting {volume}")
+                    subprocess.run(["diskutil", "eject", volume], check=True)
+                
+                # Eject EFI volume if mounted
+                efi_volume = "/Volumes/EFI"
+                if os.path.exists(efi_volume):
+                    log(f"Ejecting {efi_volume}")
+                    subprocess.run(["diskutil", "eject", efi_volume], check=True)
+                
+                warn("✓ Volumes ejected successfully")
+            except subprocess.CalledProcessError as e:
+                error(f"Failed to eject some volumes: {e}")
+                
     except subprocess.CalledProcessError as e:
         # Don't fail the whole workflow if USB deployment fails (USB might not be plugged in)
         warn(f"USB deployment failed (this is OK if no Install USB is connected): {e}")
         log("You can run 'python3 scripts/deploy-usb.py' manually when your Install USB is ready")
     
-    log("🎉 Full USB workflow completed successfully!")
     info("Your USB-ready EFI structure is ready for deployment")
+    log("🎉 Full USB workflow completed successfully!")
     
     return True
 
@@ -269,11 +293,12 @@ Example:
     parser.add_argument('changeset', help='Changeset name (without .yaml extension)')
     parser.add_argument('--output', '-o', help='Output directory for USB structure')
     parser.add_argument('--force', '-f', action='store_true', help='Force rebuild/overwrite')
+    parser.add_argument('--eject', action='store_true', help='Automatically eject EFI and Install volumes after deployment')
     
     args = parser.parse_args()
     
     try:
-        if full_usb_workflow(args.changeset, args.output, args.force):
+        if full_usb_workflow(args.changeset, args.output, args.force, args.eject):
             return 0
         else:
             return 1

@@ -157,6 +157,8 @@ def cmd_full_usb(args):
         cmd_args.extend(['--output', args.output])
     if getattr(args, 'force', False):
         cmd_args.append('--force')
+    if getattr(args, 'eject', False):
+        cmd_args.append('--eject')
     return run_workflow(workflow, cmd_args, "Full USB workflow")
 
 def cmd_full_deploy(args):
@@ -273,7 +275,7 @@ def cmd_mount_efi(args):
             install_volumes.append(volume)
     
     if not install_volumes:
-        error("Install USB not found -- either plug it in and try again, or check if EFI partition exists")
+        error("!!! Install USB not found -- either plug it in and try again, or check if EFI partition exists !!!")
         return False
     
     if len(install_volumes) > 1:
@@ -454,6 +456,7 @@ Examples:
     full_usb_parser.add_argument('changeset', help='Changeset name (without .yaml)')
     full_usb_parser.add_argument('--output', '-o', help='Output directory')
     full_usb_parser.add_argument('--force', '-f', action='store_true', help='Force rebuild')
+    full_usb_parser.add_argument('--eject', action='store_true', help='Automatically eject EFI and Install volumes')
     
     full_deploy_parser = subparsers.add_parser('full-deploy', help='Full deploy workflow')
     full_deploy_parser.add_argument('changeset', help='Changeset name (without .yaml)')

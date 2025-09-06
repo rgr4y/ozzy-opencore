@@ -51,8 +51,9 @@ def changeset_to_operations(changeset_data):
                         # If already bytes, leave as is
         return patches
     
-    # Handle kexts - append to Kernel.Add
+    # Handle kexts - replace entire Kernel.Add list
     if 'kexts' in changeset_data:
+        kext_entries = []
         for kext in changeset_data['kexts']:
             # Set ExecutablePath - empty string if no exec, otherwise Contents/MacOS/exec
             exec_path = ""
@@ -60,18 +61,22 @@ def changeset_to_operations(changeset_data):
                 exec_path = f"Contents/MacOS/{kext['exec']}"
             
             kext_entry = {
+                "Arch": "Any",
                 "BundlePath": kext['bundle'],
+                "Comment": "",
                 "Enabled": True,
                 "ExecutablePath": exec_path,
+                "MaxKernel": "",
+                "MinKernel": "",
                 "PlistPath": "Contents/Info.plist"
             }
-            
-            operations.append({
-                "op": "append",
-                "path": ["Kernel", "Add"],
-                "entry": kext_entry,
-                "key": "BundlePath"
-            })
+            kext_entries.append(kext_entry)
+        
+        operations.append({
+            "op": "set",
+            "path": ["Kernel", "Add"],
+            "value": kext_entries
+        })
     
     # Handle booter quirks - merge into Booter.Quirks
     if 'booter_quirks' in changeset_data:
@@ -205,9 +210,18 @@ def changeset_to_operations(changeset_data):
                 "key": "Path"
             })
     
-    # Handle tools - append to Misc.Tools
+    # Handle tools - remove existing then append to Misc.Tools
     if 'tools' in changeset_data:
         for tool in changeset_data['tools']:
+            # First remove any existing tool with the same name
+            operations.append({
+                "op": "remove",
+                "path": ["Misc", "Tools"],
+                "key": "Name",
+                "value": tool['Name']
+            })
+            
+            # Then append the new tool entry
             tool_entry = {
                 "Name": tool['Name'],
                 "Path": tool['Path'],
@@ -227,12 +241,12 @@ def changeset_to_operations(changeset_data):
                 "key": "Name"
             })
     
-    # Handle device properties - merge into DeviceProperties.Add
+    # Handle device properties - set to replace template samples with changeset properties
     if 'device_properties' in changeset_data:
         operations.append({
-            "op": "merge",
+            "op": "set",
             "path": ["DeviceProperties", "Add"],
-            "entries": changeset_data['device_properties']
+            "value": changeset_data['device_properties']
         })
     
     # Handle security settings
@@ -257,6 +271,24 @@ def changeset_to_operations(changeset_data):
             "value": changeset_data['scan_policy']
         })
     
+    # Handle timeout setting - set Misc.Boot.Timeout
+    if 'timeout' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Boot", "Timeout"],
+            "value": changeset_data['timeout']
+        })
+    
+    # Handle misc_debug settings - set Misc.Debug options
+    if 'misc_debug' in changeset_data:
+        debug_settings = changeset_data['misc_debug']
+        for setting, value in debug_settings.items():
+            operations.append({
+                "op": "set",
+                "path": ["Misc", "Debug", setting],
+                "value": value
+            })
+    
     return operations
 
 def post_process_config(config_path):
@@ -277,6 +309,19 @@ def post_process_config(config_path):
                     # Convert list of integers to bytes then base64
                     bytes_data = bytes(patch[field])
                     patch[field] = bytes_data
+    
+    # Convert DeviceProperties base64 strings to binary data
+    if 'DeviceProperties' in config and 'Add' in config['DeviceProperties']:
+        import base64
+        for device_path, properties in config['DeviceProperties']['Add'].items():
+            for prop_name, prop_value in properties.items():
+                if isinstance(prop_value, str):
+                    try:
+                        # Convert base64 string to binary data
+                        properties[prop_name] = base64.b64decode(prop_value)
+                    except:
+                        # If it's not valid base64, leave it as string
+                        pass
     
     # Remove warning keys
     warning_keys = [key for key in config.keys() if key.startswith('#WARNING')]
