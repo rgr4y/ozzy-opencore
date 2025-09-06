@@ -130,7 +130,7 @@ def main():
     install_volumes = find_install_volumes()
     
     if not install_volumes:
-        log("Install USB not found -- either plug it in and try again, or check if EFI partition exists")
+        warn("Install USB not found -- either plug it in and try again, or check if EFI partition exists")
         sys.exit(0)  # Exit successfully but with message
     
     if len(install_volumes) > 1:
@@ -155,7 +155,7 @@ def main():
     
     # Check if EFI partition exists
     if not check_efi_partition_exists(base_disk):
-        log("Install USB not found -- either plug it in and try again, or check if EFI partition exists")
+        warn("Install USB not found -- either plug it in and try again, or check if EFI partition exists")
         sys.exit(0)  # Exit successfully but with message
     
     # Mount EFI partition

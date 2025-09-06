@@ -69,9 +69,11 @@ def cmd_build_iso(args):
         return False
     
     script = ROOT / "scripts" / "build-iso.py"
-    cmd_args = []
+    cmd_args = [args.changeset]
     if getattr(args, 'force', False):
         cmd_args.append('--force')
+    if getattr(args, 'no_validate', False):
+        cmd_args.append('--no-validate')
     return run_script(script, cmd_args, "Build ISO")
 
 def cmd_build_usb(args):
@@ -81,10 +83,7 @@ def cmd_build_usb(args):
         return False
     
     script = ROOT / "scripts" / "build-usb.py"
-    cmd_args = []
-    if args.changeset:
-        changeset_name = normalize_changeset_name(args.changeset)
-        cmd_args.extend(['--changeset', changeset_name])
+    cmd_args = [args.changeset]
     if args.output:
         cmd_args.extend(['--output', args.output])
     if getattr(args, 'force', False):
@@ -506,10 +505,12 @@ Examples:
     apply_parser.add_argument('changeset', help='Changeset name (without .yaml)')
     
     build_iso_parser = subparsers.add_parser('build-iso', help='Build ISO')
+    build_iso_parser.add_argument('changeset', help='Changeset name (without .yaml)')
     build_iso_parser.add_argument('--force', '-f', action='store_true', help='Force rebuild')
+    build_iso_parser.add_argument('--no-validate', action='store_true', help='Skip validation')
     
     build_usb_parser = subparsers.add_parser('build-usb', help='Build USB')
-    build_usb_parser.add_argument('--changeset', '-c', help='Changeset to apply')
+    build_usb_parser.add_argument('changeset', help='Changeset name (without .yaml)')
     build_usb_parser.add_argument('--output', '-o', help='Output directory')
     build_usb_parser.add_argument('--force', '-f', action='store_true', help='Force rebuild')
     

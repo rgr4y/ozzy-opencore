@@ -23,7 +23,7 @@ from lib import (
 from lib.changeset import apply_amd_vanilla_patches_to_data, get_amd_vanilla_patch_info
 
 # Project-specific paths
-EFI = ROOT / "out" / "efi" / "EFI" / "OC"
+EFI = ROOT / "out" / "build" / "efi" / "EFI" / "OC"
 TEMPLATE_PLIST = ROOT / "efi-template" / "EFI" / "OC" / "config.plist"
 PATCHER = ROOT / "scripts" / "patch-plist.py"
 
@@ -323,6 +323,25 @@ def changeset_to_operations(changeset_data):
             })
     
     return operations
+
+def post_process_config(config_path):
+    """Fix binary data format issues after patching"""
+    import plistlib
+    
+    # Read the plist
+    with open(config_path, 'rb') as f:
+        config = plistlib.load(f)
+    
+    # Fix kernel patches binary data
+    if 'Kernel' in config and 'Patch' in config['Kernel']:
+        for patch in config['Kernel']['Patch']:
+            for field in ['Find', 'Replace', 'Mask', 'ReplaceMask']:
+                if field in patch and isinstance(patch[field], list):
+                    patch[field] = bytes(patch[field])
+    
+    # Write back
+    with open(config_path, 'wb') as f:
+        plistlib.dump(config, f)
 
 def post_process_config(config_path):
     """Fix binary data formats and remove warnings"""

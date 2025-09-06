@@ -29,7 +29,7 @@ def full_deploy_workflow(changeset_name, force_rebuild=False, build_only=False):
         error(f"Changeset not found: {changeset_path}")
         return False
     
-    cmd = [sys.executable, str(apply_script), str(changeset_path)]
+    cmd = [sys.executable, str(apply_script), str(changeset_name)]
     try:
         result = subprocess.run(cmd, cwd=ROOT, check=True)
         log("✓ Changeset applied successfully")
@@ -40,7 +40,8 @@ def full_deploy_workflow(changeset_name, force_rebuild=False, build_only=False):
     # Step 2: Build ISO
     log("Step 2/3: Building OpenCore ISO...")
     build_iso_script = ROOT / "scripts" / "build-iso.py"
-    cmd = [sys.executable, str(build_iso_script)]
+    cmd = [sys.executable, str(build_iso_script), changeset_name]
+
     if force_rebuild:
         cmd.append("--force")
     
@@ -71,7 +72,7 @@ def full_deploy_workflow(changeset_name, force_rebuild=False, build_only=False):
         log(f"Deploying to VM {vmid} on Proxmox")
         
         # Upload ISO to Proxmox
-        iso_path = ROOT / 'out' / 'iso' / 'opencore.iso'
+        iso_path = ROOT / 'out' / 'opencore.iso'
         if not iso_path.exists():
             # Fallback to build directory
             iso_path = ROOT / 'out' / 'build' / 'efi' / 'opencore.iso'
@@ -88,18 +89,16 @@ def full_deploy_workflow(changeset_name, force_rebuild=False, build_only=False):
         
         # Stop VM if running
         log(f"Stopping VM {vmid} if running...")
-        ssh(f"qm stop {vmid}", check=False)  # Don't fail if VM is already stopped
+        ssh(f"qm stop {vmid}")  # Don't fail if VM is already  stopped
         
         # Configure VM storage
         log("Configuring VM storage...")
-        if not ssh(f"qm set {vmid} -ide0 local:iso/{iso_name},media=disk,cache=unsafe,size=10M"):
-            return False
-        if not ssh(f"qm set {vmid} -ide2 local:iso/{installer_iso},cache=unsafe"):
+        if not ssh(f"qm set {vmid} -ide0 local:iso/{iso_name},media=cdrom,cache=unsafe,size=10M"):
             return False
         
         # Start VM
         log(f"Starting VM {vmid}...")
-        if not ssh(f"qm start {vmid}"):
+        if not ssh(f"sleep 3 && qm start {vmid}"):
             return False
         
         log("✓ Deployment completed successfully")

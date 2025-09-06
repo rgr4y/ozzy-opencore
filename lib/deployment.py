@@ -146,8 +146,6 @@ def deploy_to_proxmox(changeset_name=None, force_rebuild=False):
         log("Configuring VM storage...")
         if not ssh(f"qm set {vmid} -ide0 local:iso/{iso_name},media=disk,cache=unsafe,size=10M"):
             return False
-        if not ssh(f"qm set {vmid} -ide2 local:iso/{installer_iso},cache=unsafe"):
-            return False
     
     # Start VM
     log(f"Starting VM {vmid}...")

@@ -176,11 +176,14 @@ def get_project_paths():
         'scripts': ROOT / 'scripts',
         'assets': ROOT / 'assets',
         'out': ROOT / 'out',
+        'build_root': ROOT / 'out' / 'build',
         'efi_build': ROOT / 'out' / 'efi',
         'efi_oc': ROOT / 'out' / 'efi' / 'EFI' / 'OC',
         'usb_efi': ROOT / 'out' / 'build' / 'usb',
         'deploy_env': ROOT / 'config' / 'deploy.env',
         'sources_json': ROOT / 'config' / 'sources.json',
+        'opencore': ROOT / 'out' / 'opencore',
+        'bin': ROOT / 'bin',
     }
 
 def check_required_tools(tools):
@@ -216,3 +219,18 @@ def list_available_changesets():
     
     changesets = list(paths['changesets'].glob('*.yaml'))
     return [cs.stem for cs in sorted(changesets)]
+
+def validate_changeset_exists(changeset_name: str) -> Path:
+    """Validate that a changeset exists and return its path"""
+    changeset_path = get_changeset_path(changeset_name)
+    
+    if not changeset_path.exists():
+        available = list_available_changesets()
+        error(f"Changeset file not found: {changeset_path}")
+        if available:
+            error(f"Available changesets: {', '.join(available)}")
+        else:
+            error("No changesets found in config/changesets/")
+        raise FileNotFoundError(f"Changeset not found: {changeset_name}")
+    
+    return changeset_path

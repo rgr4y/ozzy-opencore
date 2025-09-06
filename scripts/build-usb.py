@@ -21,7 +21,7 @@ from lib import (
     validate_file_exists, get_project_paths,
     load_changeset, save_changeset,
     validate_and_generate_smbios, list_changeset_kexts,
-    get_changeset_path
+    get_changeset_path, build_complete_efi_structure, validate_changeset_exists
 )
 
 def validate_required_kexts(changeset_name, output_dir):
@@ -55,8 +55,14 @@ def validate_required_kexts(changeset_name, output_dir):
     log("All required kexts are available")
     return True
 
-def create_usb_efi(changeset_name=None, output_dir=None, force_rebuild=False, dry_run=False, usb_path=None, skip_smbios_generation=False):
+def create_usb_efi(changeset_name, output_dir=None, force_rebuild=False, dry_run=False, usb_path=None, skip_smbios_generation=False):
     """Create USB-ready EFI structure"""
+    
+    # Validate changeset exists
+    try:
+        validate_changeset_exists(changeset_name)
+    except FileNotFoundError:
+        return False
     
     paths = get_project_paths()
     
@@ -71,24 +77,16 @@ def create_usb_efi(changeset_name=None, output_dir=None, force_rebuild=False, dr
     if dry_run:
         log("DRY RUN MODE - No files will be created")
     
-    # Apply changeset if specified
-    if changeset_name:
-        changeset_path = get_changeset_path(changeset_name)
-        validate_file_exists(changeset_path, "Changeset file")
-        
-        # Validate kexts are available
-        if not validate_required_kexts(changeset_name, output_dir):
+    # Apply changeset and build complete EFI structure
+    # Validate kexts are available
+    if not validate_required_kexts(changeset_name, output_dir):
+        return False
+    
+    if not dry_run:
+        # Build complete EFI structure with changeset
+        if not build_complete_efi_structure(changeset_name=changeset_name, force_rebuild=force_rebuild):
+            error("Failed to build complete EFI structure")
             return False
-        
-        log(f"Applying changeset: {changeset_name}")
-        if not dry_run:
-            # Apply changeset using existing script
-            cmd = [sys.executable, str(paths['scripts'] / "apply-changeset.py"), changeset_name]
-            try:
-                subprocess.check_call(cmd, cwd=ROOT)
-            except subprocess.CalledProcessError as e:
-                error(f"Failed to apply changeset: {e}")
-                return False
         
         # Generate SMBIOS if not skipped
         if not skip_smbios_generation:
@@ -101,9 +99,15 @@ def create_usb_efi(changeset_name=None, output_dir=None, force_rebuild=False, dr
                             warn("Failed to save SMBIOS updates to changeset")
                     else:
                         warn("Failed to generate SMBIOS data")
+    else:
+        # If no changeset specified, ensure we have a basic EFI structure
+        if not dry_run:
+            if not build_complete_efi_structure(force_rebuild=force_rebuild):
+                error("Failed to build basic EFI structure")
+                return False
     
     # Validate source EFI structure
-    source_efi = paths['efi_build'] / 'EFI'
+    source_efi = paths['out'] / 'build' / 'efi' / 'EFI'
     validate_file_exists(source_efi, "Source EFI structure")
     validate_file_exists(source_efi / 'OC' / 'config.plist', "OpenCore configuration")
     
@@ -175,7 +179,7 @@ def create_usb_efi(changeset_name=None, output_dir=None, force_rebuild=False, dr
 
 def main():
     parser = argparse.ArgumentParser(description='Create USB-ready OpenCore EFI structure')
-    parser.add_argument('--changeset', '-c', help='Apply named changeset configuration')
+    parser.add_argument('changeset', help='Changeset name (without .yaml)')
     parser.add_argument('--output', '-o', help='Output directory for USB EFI structure')
     parser.add_argument('--force', '-f', action='store_true', help='Force rebuild, overwrite existing files')
     parser.add_argument('--dry-run', action='store_true', help='Show what would be done without making changes')

@@ -270,7 +270,7 @@ def full_usb_workflow(changeset_name, output_path=None, force=False, eject=False
     
     try:
         result = subprocess.run(cmd, cwd=ROOT, check=True)
-        log("✓ EFI deployed to USB successfully")
+        # log("✓ EFI deployed to USB successfully")
         
         # Eject volumes if requested
         if eject:

@@ -71,7 +71,7 @@ class PathManager:
     @property
     def efi_build(self) -> Path:
         """EFI build directory - primary OpenCore build location"""
-        return self.out / "efi"
+        return self.out / "build" / "efi"
     
     @property
     def usb_build(self) -> Path:
