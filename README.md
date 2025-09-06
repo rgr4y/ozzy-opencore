@@ -1,133 +1,339 @@
-# macOS → Proxmox OpenCore Builder/Deployer (Sequoia, RX 580, NVMe/USB passthrough)
+# Ozzy - OpenCore Automation & Deployment System
 
-Run on **macOS**. Builds OpenCore EFI, patches `config.plist` declaratively, builds OC ISO(s),
-then pushes to remote Proxmox via SSH and updates VM config. One-command deploy.
+**Modern, declarative OpenCore configuration for AMD Ryzen hackintosh systems**
 
-See `config/deploy.env.example` to set remote host/VMID/paths.
+Run on **macOS**. Builds OpenCore EFI configurations declaratively from YAML changesets, manages kext dependencies with DEBUG/RELEASE build support, generates bootable ISOs, creates USB installers, and optionally deploys to remote Proxmox VMs via SSH.
+
+## Features
+
+- 🚀 **Declarative Configuration**: Define OpenCore settings in YAML instead of manually editing config.plist
+- 🔧 **AMD Vanilla Support**: Automatic core count detection and kernel patches for AMD Ryzen systems
+- 📦 **Smart Kext Management**: Automatic download from GitHub releases with DEBUG/RELEASE build selection
+- 🛡️ **Security & Debug Ready**: Full support for SecureBootModel, comprehensive debug logging, and NVRAM configuration
+- 🔄 **Multi-Deployment**: Create USB installers, ISOs, or deploy directly to Proxmox VMs
+- ✅ **Validation Built-in**: Automatic OpenCore configuration validation with detailed error reporting
+- 🎯 **Hardware Optimized**: Pre-configured for Ryzen 9 3950X + RX 580 systems with Sequoia support
 
 ## Quick Start
 
-1. **Setup on your Mac:**
+1. **Clone and setup:**
    ```bash
-   cd ~/Downloads
-   unzip macos-oc-remote-deploy.zip -d ./macos-oc-remote-deploy
-   cd macos-oc-remote-deploy
+   git clone git@github.com:rgr4y/ozzy-opencore.git
+   cd ozzy-opencore
    ```
 
-2. **Configure your Proxmox connection:**
+2. **Configure Proxmox connection (optional):**
    ```bash
    cp config/deploy.env.example config/deploy.env
    # Edit config/deploy.env with your Proxmox host details
    ```
 
-3. **Fetch OpenCore + core kexts:**
+3. **Fetch OpenCore + kexts:**
    ```bash
    ./ozzy fetch
    ```
 
-4. **Deploy to Proxmox:**
+4. **Deploy:**
    ```bash
-   # Deploy with the default Ryzen 3950X + RX 580 configuration
+   # Apply configuration and create USB EFI
+   ./ozzy full-usb ryzen3950x_rx580_AMDVanilla
+   
+   # Or deploy to Proxmox VM
    ./ozzy proxmox --changeset ryzen3950x_rx580_AMDVanilla
    
-   # Or just build the ISO without deploying
-   ./ozzy proxmox --build-only
-   
-   # Check deployment status
-   ./ozzy status
+   # Or just apply the changeset
+   ./ozzy apply ryzen3950x_rx580_AMDVanilla
    ```
+
+## Hardware Configuration
+
+### Tested Hardware
+- **CPU**: AMD Ryzen 9 3950X (16-core, auto-detected)
+- **GPU**: AMD Radeon RX 580 8GB
+- **Target OS**: macOS Sequoia (15.0+)
+- **OpenCore**: Version 1.0.5
+- **SMBIOS**: iMacPro1,1
+
+### Included Kexts
+The system automatically downloads and manages these kexts:
+
+- **Lilu.kext** (RELEASE) - Kernel extension patching framework
+- **NVMeFix.kext** (DEBUG) - NVMe power management and compatibility 
+- **VirtualSMC.kext** (RELEASE) - SMC emulation for hardware monitoring
+- **WhateverGreen.kext** (RELEASE) - GPU acceleration and display fixes
+- **RestrictEvents.kext** (RELEASE) - Memory and CPU name fixes
+- **AppleALC.kext** (RELEASE) - Audio codec support
+
+### Debug & Security Features
+- **Comprehensive Debug Logging**: Target=67, SysReport enabled, panic logs captured
+- **Security**: SecureBootModel=Default, Vault=Optional, proper NVRAM configuration
+- **AMD Optimizations**: 25 kernel patches with automatic core count detection
+- **GPU**: agdpmod=pikera for optimal RX 580 performance
 
 ## SMBIOS Serial Generation
 
-Before deploying, you need valid SMBIOS serial numbers for your Mac. You can generate these separately:
+Before deploying, you need valid SMBIOS serial numbers. The system can generate these automatically:
 
 ### Generate Serial Numbers
+
+```bash
+# Generate SMBIOS data for a changeset (automatic detection of placeholders)
+./ozzy serial --changeset ryzen3950x_rx580_AMDVanilla
+
+# Force generation of new SMBIOS data
+./ozzy serial --changeset ryzen3950x_rx580_AMDVanilla --force
+
+# Generate with specific model (advanced usage)
+./ozzy smbios ryzen3950x_rx580_AMDVanilla
+```
+
+The script automatically:
+- Detects if valid serial numbers are already present
+- Uses `macserial` utility from OpenCore releases
+- Generates serial number, MLB, and UUID for iMacPro1,1
+- Updates the changeset YAML file with generated values
+- Creates a backup of the original changeset file
+
+## Changesets & Configuration
+
+### Understanding Changesets
+
+Changesets are YAML files that declaratively define your OpenCore configuration:
 
 ```bash
 # List available changesets
 ./ozzy list
 
-# Generate SMBIOS data for a specific changeset (only if placeholders detected)
-./ozzy serial --changeset ryzen3950x_rx580_AMDVanilla
+# View changeset details
+cat config/changesets/ryzen3950x_rx580_AMDVanilla.yaml
 
-# Force generation of new SMBIOS data
-./ozzy serial --changeset ryzen3950x_rx580_AMDVanilla --force
+# Apply a changeset (generates config.plist)
+./ozzy apply ryzen3950x_rx580_AMDVanilla
+
+# Validate applied configuration
+./ozzy validate
 ```
 
-The script will:
-- Check if `macserial` utility is available (fetched by `./ozzy fetch`)
-- Generate new serial number, MLB, and UUID if placeholders are detected
-- Update the changeset YAML file directly
-- Create a backup of the original file
+### AMD Vanilla Features
+
+The `ryzen3950x_rx580_AMDVanilla` changeset includes:
+
+- **25 AMD Kernel Patches**: Automatic CPU compatibility for Ryzen systems
+- **16-Core Detection**: Auto-configures core count patches for Ryzen 9 3950X
+- **RX 580 Optimization**: GPU patches and boot arguments for optimal performance
+- **Power Management**: Proper ACPI tables and USB configuration
+- **Debug Ready**: Comprehensive logging for troubleshooting
+- **Sequoia Compatible**: Tested with macOS 15.0+
+
+## Deployment Options
 
 ### USB EFI Creation
 
 Create a USB-ready EFI structure for bare metal installation:
 
 ```bash
-# Create USB EFI with automatic SMBIOS generation
-./ozzy usb --changeset ryzen3950x_rx580_AMDVanilla
+# Full workflow: apply changeset + create USB EFI
+./ozzy full-usb ryzen3950x_rx580_AMDVanilla
 
-# Create USB EFI and deploy directly to USB drive
-python3 scripts/create_usb_efi.py --changeset ryzen3950x_rx580_mac --usb /Volumes/MyUSB
+# Create USB EFI with custom output directory  
+./ozzy usb --changeset ryzen3950x_rx580_AMDVanilla --output ./my-efi
 
-# Skip SMBIOS generation if you already generated serials separately
-python3 scripts/create_usb_efi.py --changeset ryzen3950x_rx580_mac --skip-smbios-generation
-
-# Dry run to see what would be done
-python3 scripts/create_usb_efi.py --changeset ryzen3950x_rx580_mac --dry-run
+# Advanced: Deploy directly to mounted USB drive
+python3 workflows/full-usb.py ryzen3950x_rx580_AMDVanilla --output /Volumes/EFI
 ```
 
-**Note:** The serial generation modifies your changeset YAML file. When you later apply the changeset with `apply_changeset.py`, it will use these generated serial numbers in the actual config.plist.
+### ISO Creation
 
-## Commands
+Build bootable OpenCore ISOs:
 
-### Using Ozzy (Recommended)
+```bash
+# Build ISO from current configuration
+./ozzy iso
+
+# Build ISO with specific changeset
+python3 scripts/build-iso.py --changeset ryzen3950x_rx580_AMDVanilla
+```
+
+### Proxmox Deployment
+
+Deploy to remote Proxmox VMs (requires SSH key setup):
+
+```bash
+# Full deployment to Proxmox VM
+./ozzy proxmox --changeset ryzen3950x_rx580_AMDVanilla
+
+# Build only (no deployment)
+./ozzy proxmox --build-only
+
+# Check deployment status
+./ozzy status
+```
+
+## Command Reference
+
+### Ozzy Master Script
 
 The `ozzy` script provides a unified interface for all operations:
 
 ```bash
-# Show all available commands
-./ozzy --help
+# Core Operations
+./ozzy fetch                    # Download OpenCore + kexts
+./ozzy apply <changeset>        # Apply changeset to generate config.plist
+./ozzy serial --changeset <changeset>  # Generate SMBIOS serial numbers
+./ozzy validate                 # Validate current OpenCore configuration
 
-# Apply a changeset
-./ozzy apply ryzen3950x_rx580_AMDVanilla
+# Build & Deploy
+./ozzy full-usb <changeset>     # Complete USB workflow
+./ozzy usb --changeset <changeset>  # Create USB EFI structure
+./ozzy iso                      # Build OpenCore ISO
+./ozzy proxmox --changeset <changeset>  # Deploy to Proxmox VM
 
-# Create USB-ready EFI
-./ozzy usb --changeset ryzen3950x_rx580_AMDVanilla --output ./usb
-
-# Deploy to Proxmox
-./ozzy proxmox --changeset ryzen3950x_rx580_AMDVanilla --rebuild
-
-# Fetch OpenCore assets
-./ozzy fetch
-
-# Clean output directories  
-./ozzy clean
-
-# Generate SMBIOS data
-./ozzy smbios ryzen3950x_rx580_AMDVanilla
-
-# Generate serial numbers
-./ozzy serial --changeset ryzen3950x_rx580_AMDVanilla --force
-
-# Set up Python environment
-./ozzy setupenv
-
-# Show project status
-./ozzy status
-
-# List available changesets
-./ozzy list
+# Utilities
+./ozzy list                     # List available changesets
+./ozzy clean                    # Clean output directories
+./ozzy status                   # Show project status
+./ozzy setupenv                 # Set up Python environment
+./ozzy --help                   # Show all commands
 ```
 
-### Legacy Commands
+### Advanced Operations
 
-- `./deploy --changeset <name>` - Apply changeset and deploy to Proxmox
-- `./deploy --build-only` - Build OpenCore ISO without deploying  
-- `./deploy --status` - Check deployment status and configuration
-- `./deploy --rebuild` - Force rebuild of ISO before deployment
-- `./deploy --help` - Show all available options
+```bash
+# Kext Management
+python3 scripts/fetch-assets.py  # Download kexts with DEBUG/RELEASE selection
+
+# Direct Changeset Application
+python3 scripts/apply-changeset.py <changeset> --dry-run  # Preview changes
+python3 scripts/apply-changeset.py <changeset>           # Apply changes
+
+# Build Workflows
+python3 workflows/full-usb.py <changeset> --force       # Force rebuild USB
+python3 workflows/switch-changeset.py <old> <new>       # Switch configurations
+
+# Configuration Management
+python3 scripts/validate-config.py    # Validate OpenCore config
+python3 scripts/read-config.py        # Read current config details
+```
+
+## Project Structure
+
+```
+ozzy-opencore/
+├── ozzy                        # Master script - unified interface
+├── scripts/                    # Core Python scripts
+│   ├── fetch-assets.py        # Download OpenCore + kexts (was bin/fetch_assets.sh)
+│   ├── apply-changeset.py     # Apply YAML changesets to config.plist
+│   ├── build-iso.py           # Create bootable OpenCore ISOs
+│   ├── generate-serial.py     # Generate SMBIOS serial numbers
+│   └── validate-config.py     # Validate OpenCore configurations
+├── workflows/                  # Multi-step automation workflows
+│   ├── full-usb.py            # Complete USB creation workflow
+│   ├── switch-changeset.py    # Switch between configurations
+│   └── full-deploy.py         # Complete deployment workflow
+├── config/                     # Configuration files
+│   ├── sources.json           # Kext sources and build types
+│   ├── deploy.env.example     # Proxmox deployment settings
+│   └── changesets/            # OpenCore configuration changesets
+│       └── ryzen3950x_rx580_AMDVanilla.yaml
+├── lib/                        # Core Python libraries
+│   ├── changeset.py           # Changeset processing logic
+│   ├── deployment.py          # Deployment utilities
+│   └── smbios.py              # SMBIOS generation
+├── efi-template/               # Base OpenCore EFI structure
+└── out/                        # Build outputs and cache
+    ├── efi/                   # Generated EFI structure
+    ├── kext-cache/            # Downloaded kext archives
+    ├── kext-debug-*/          # DEBUG build kext extractions
+    └── kext-release-*/        # RELEASE build kext extractions
+```
+
+## Technical Details
+
+### Kext Build Type Support
+
+The system supports both DEBUG and RELEASE builds of kexts:
+
+```json
+// config/sources.json
+{
+  "kexts": [
+    {
+      "name": "Lilu.kext",
+      "repo": "acidanthera/Lilu"
+      // Defaults to RELEASE build
+    },
+    {
+      "name": "NVMeFix.kext", 
+      "repo": "acidanthera/NVMeFix",
+      "build_type": "DEBUG"  // Explicitly request DEBUG build
+    }
+  ]
+}
+```
+
+### AMD Vanilla Integration
+
+Automatic AMD kernel patch management:
+- Downloads latest patches from AMD-OSX/AMD_Vanilla repository
+- Applies 25 kernel patches for full AMD compatibility
+- Auto-detects CPU core count (16 cores for Ryzen 9 3950X)
+- Handles core count patches dynamically across macOS versions
+
+### Validation & Security
+
+- **OpenCore Validation**: Uses official `ocvalidate` tool for configuration verification
+- **Security Model**: SecureBootModel=Default with proper signed kext validation
+- **NVRAM Support**: Complete NVRAM configuration for Sequoia compatibility
+- **Debug Logging**: Comprehensive Target=67 debug configuration for troubleshooting
+
+### Deployment Flexibility
+
+- **Local USB**: Create bootable USB installers for bare metal
+- **ISO Creation**: Generate OpenCore ISOs for VM deployment
+- **Remote Proxmox**: SSH-based deployment to Proxmox VE systems
+- **Hot-swapping**: Switch between configurations without rebuilding assets
+
+## Troubleshooting
+
+### Common Issues
+
+**Permission denied on ocvalidate:**
+```bash
+chmod +x out/opencore/Utilities/ocvalidate/ocvalidate
+```
+
+**Kext not found during USB creation:**
+```bash
+# Re-fetch assets to ensure kexts are available
+./ozzy fetch
+# Check kext directories
+ls -la out/kext-*
+```
+
+**Invalid SMBIOS serials:**
+```bash
+# Force regenerate serial numbers
+./ozzy serial --changeset ryzen3950x_rx580_AMDVanilla --force
+```
+
+**Debug verbose boot:**
+The changeset includes comprehensive debug settings:
+- `boot-args`: `-v debug=0x100 keepsyms=1`
+- Debug Target: `0x43` (67 decimal) for full logging
+- Panic logging enabled for crash analysis
+
+### Getting Help
+
+1. Check the validation output: `./ozzy validate`
+2. Review debug logs in verbose boot mode
+3. Verify hardware compatibility with included changeset
+4. Consult the [OZZY_GUIDE.md](OZZY_GUIDE.md) for detailed changeset explanations
+
+## License
+
+This project is open source. Use at your own risk for educational purposes.
+
+## Common Usages
 
 ./scripts/fetch-assets.py
 
