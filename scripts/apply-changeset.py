@@ -54,6 +54,7 @@ def changeset_to_operations(changeset_data):
     # Handle kexts - append to Kernel.Add
     if 'kexts' in changeset_data:
         for kext in changeset_data['kexts']:
+            # Set ExecutablePath - empty string if no exec, otherwise Contents/MacOS/exec
             exec_path = ""
             if kext.get('exec') and kext['exec'].strip():
                 exec_path = f"Contents/MacOS/{kext['exec']}"
@@ -64,6 +65,7 @@ def changeset_to_operations(changeset_data):
                 "ExecutablePath": exec_path,
                 "PlistPath": "Contents/Info.plist"
             }
+            
             operations.append({
                 "op": "append",
                 "path": ["Kernel", "Add"],
@@ -157,9 +159,19 @@ def changeset_to_operations(changeset_data):
     # Handle ACPI add - append to ACPI.Add
     if 'acpi_add' in changeset_data:
         for acpi_file in changeset_data['acpi_add']:
+            # First, remove any existing entry with the same Path
+            operations.append({
+                "op": "remove",
+                "path": ["ACPI", "Add"],
+                "key": "Path",
+                "value": acpi_file
+            })
+            
+            # Then append the new entry
             acpi_entry = {
                 "Path": acpi_file,
-                "Enabled": True
+                "Enabled": True,
+                "Comment": f"Added by changeset"
             }
             operations.append({
                 "op": "append",
@@ -248,49 +260,73 @@ def changeset_to_operations(changeset_data):
     return operations
 
 def post_process_config(config_path):
-    """Post-process the config.plist to fix data format issues using shell commands"""
+    """Fix binary data formats and remove warnings"""
+    import subprocess
+    import plistlib
+    from datetime import datetime
     
-    # Convert empty kernel patch arrays to proper data fields
-    log("Converting kernel patch arrays to data format...")
+    # Load the config
+    with open(config_path, 'rb') as f:
+        config = plistlib.load(f)
     
-    # More complex fix: convert non-empty integer arrays to base64 data for kernel patches
-    log("Converting integer arrays to base64 data format...")
+    # Convert kernel patch arrays to binary data format
+    if 'Kernel' in config and 'Patch' in config['Kernel']:
+        for patch in config['Kernel']['Patch']:
+            for field in ['Find', 'Replace', 'Mask', 'ReplaceMask']:
+                if field in patch and isinstance(patch[field], list):
+                    # Convert list of integers to bytes then base64
+                    bytes_data = bytes(patch[field])
+                    patch[field] = bytes_data
     
-    # Python script to handle more complex conversions
-    python_fix_script = f"""
-import plistlib
-import base64
-from pathlib import Path
-
-config_file = Path('{config_path}')
-with open(config_file, 'rb') as f:
-    plist_data = plistlib.load(f)
-
-# Fix kernel patches
-if 'Kernel' in plist_data and 'Patch' in plist_data['Kernel']:
-    for patch in plist_data['Kernel']['Patch']:
-        # Convert integer arrays to bytes for binary fields
-        for field in ['Find', 'Replace', 'Mask', 'ReplaceMask']:
-            if field in patch and isinstance(patch[field], list):
-                # Convert list of integers to bytes
-                patch[field] = bytes(patch[field])
-
-# Fix missing ExecutablePath in kexts
-if 'Kernel' in plist_data and 'Add' in plist_data['Kernel']:
-    for kext in plist_data['Kernel']['Add']:
-        if 'ExecutablePath' not in kext:
-            kext['ExecutablePath'] = ''
-
-# Save the fixed plist
-with open(config_file, 'wb') as f:
-    plistlib.dump(plist_data, f)
-"""
+    # Remove warning keys
+    warning_keys = [key for key in config.keys() if key.startswith('#WARNING')]
+    for key in warning_keys:
+        config.pop(key, None)
     
-    try:
-        subprocess.run([sys.executable, '-c', python_fix_script], check=True, capture_output=True, text=True)
-        log("✓ Binary data format conversion completed")
-    except subprocess.CalledProcessError as e:
-        warn(f"Python data conversion failed: {e.stderr}")
+    # Remove warning keys from ACPI section
+    if 'ACPI' in config:
+        acpi_warning_keys = [key for key in config['ACPI'].keys() if key.startswith('#WARNING')]
+        for key in acpi_warning_keys:
+            config['ACPI'].pop(key, None)
+    
+    # Remove warning keys from DeviceProperties section
+    if 'DeviceProperties' in config:
+        device_warning_keys = [key for key in config['DeviceProperties'].keys() if key.startswith('#WARNING')]
+        for key in device_warning_keys:
+            config['DeviceProperties'].pop(key, None)
+    
+    # Clear sample ACPI entries - keep only enabled ones or ones added by changeset  
+    if 'ACPI' in config and 'Add' in config['ACPI']:
+        # Remove all sample/disabled entries to prevent conflicts with changeset
+        # Keep only entries that are explicitly enabled (True)
+        filtered_entries = []
+        for entry in config['ACPI']['Add']:
+            # Keep entries that are explicitly enabled (not just default True)
+            if entry.get('Enabled') is True:
+                filtered_entries.append(entry)
+                
+        config['ACPI']['Add'] = filtered_entries
+    
+    # Clear sample Kernel entries - keep only enabled ones or fix missing ExecutablePath
+    if 'Kernel' in config and 'Add' in config['Kernel']:
+        filtered_entries = []
+        for entry in config['Kernel']['Add']:
+            # Only keep entries that are enabled, or fix sample entries missing ExecutablePath
+            if entry.get('Enabled', True):
+                # Ensure ExecutablePath exists, add empty string if missing
+                if 'ExecutablePath' not in entry:
+                    entry['ExecutablePath'] = ""
+                filtered_entries.append(entry)
+                
+        config['Kernel']['Add'] = filtered_entries
+    
+    # Add generation timestamp
+    current_time = datetime.now()
+    config['#Generated'] = current_time.strftime('%Y-%m-%d %H:%M:%S')
+    
+    # Save the updated config
+    with open(config_path, 'wb') as f:
+        plistlib.dump(config, f)
 
 def main():
     parser = argparse.ArgumentParser(

@@ -254,6 +254,123 @@ def cmd_status(args):
     
     return True
 
+def cmd_mount_efi(args):
+    """Mount EFI partition from Install USB"""
+    import subprocess
+    import glob
+    
+    log("Mounting EFI partition from Install USB...")
+    
+    # Find Install volumes
+    volumes_pattern = "/Volumes/Install*"
+    install_volumes = []
+    
+    log("Scanning for Install volumes...")
+    for volume_path in glob.glob(volumes_pattern):
+        volume = Path(volume_path)
+        if volume.exists() and volume.is_dir():
+            log(f"Found Install volume: {volume}")
+            install_volumes.append(volume)
+    
+    if not install_volumes:
+        error("Install USB not found -- either plug it in and try again, or check if EFI partition exists")
+        return False
+    
+    if len(install_volumes) > 1:
+        warn("Multiple Install volumes found:")
+        for i, volume in enumerate(install_volumes, 1):
+            warn(f"  {i}. {volume}")
+        warn("Using the first one found")
+    
+    # Use the first Install volume
+    install_volume = install_volumes[0]
+    log(f"Using Install volume: {install_volume}")
+    
+    # Get disk identifier
+    try:
+        result = subprocess.run(['diskutil', 'info', str(install_volume)], 
+                              capture_output=True, text=True, check=True)
+        
+        disk_id = None
+        for line in result.stdout.split('\n'):
+            if 'Device Identifier:' in line:
+                disk_id = line.split(':')[1].strip()
+                break
+                
+        if not disk_id:
+            error("Could not determine disk identifier")
+            return False
+            
+    except subprocess.CalledProcessError as e:
+        error(f"Failed to get disk info for {install_volume}: {e.stderr}")
+        return False
+    
+    # Extract base disk (e.g., disk2s2 -> disk2)
+    base_disk = disk_id.rsplit('s', 1)[0]
+    log(f"Base disk: {base_disk}")
+    
+    # Check if EFI partition exists
+    efi_disk_id = f"{base_disk}s1"  # EFI is usually partition 1
+    
+    try:
+        result = subprocess.run(['diskutil', 'info', efi_disk_id], 
+                              capture_output=True, text=True, check=True)
+        
+        # Check if it's actually an EFI partition
+        is_efi = False
+        for line in result.stdout.split('\n'):
+            if 'File System Personality:' in line and 'FAT32' in line:
+                is_efi = True
+                break
+            if 'Volume Name:' in line and 'EFI' in line:
+                is_efi = True
+                break
+                
+        if not is_efi:
+            error("EFI partition not found on this disk")
+            return False
+            
+    except subprocess.CalledProcessError:
+        error("EFI partition not found on this disk")
+        return False
+    
+    # Mount EFI partition
+    try:
+        result = subprocess.run(['sudo', 'diskutil', 'mount', efi_disk_id],
+                              capture_output=True, text=True, check=True)
+        
+        # Check if EFI partition is mounted
+        efi_mount_point = Path("/Volumes/EFI")
+        if efi_mount_point.exists():
+            log(f"✓ EFI partition mounted successfully at: {efi_mount_point}")
+            info(f"You can now access the EFI partition at: {efi_mount_point}")
+            
+            # Show current EFI contents if it exists
+            efi_folder = efi_mount_point / "EFI"
+            if efi_folder.exists():
+                log("Current EFI structure:")
+                try:
+                    result = subprocess.run(['find', str(efi_folder), '-maxdepth', '2'], 
+                                          capture_output=True, text=True, check=True)
+                    for line in result.stdout.strip().split('\n'):
+                        if line != str(efi_folder):
+                            relative_path = line.replace(str(efi_folder), '').lstrip('/')
+                            if relative_path:
+                                info(f"  {relative_path}")
+                except subprocess.CalledProcessError:
+                    pass
+            else:
+                info("EFI folder not found on this partition")
+            
+            return True
+        else:
+            error("EFI partition mounted but /Volumes/EFI not found")
+            return False
+            
+    except subprocess.CalledProcessError as e:
+        error(f"Failed to mount EFI partition {efi_disk_id}: {e.stderr}")
+        return False
+
 def cmd_list(args):
     """List available changesets"""
     changesets = list_available_changesets()
@@ -353,6 +470,7 @@ Examples:
     setup_parser = subparsers.add_parser('setup-env', help='Setup environment')
     status_parser = subparsers.add_parser('status', help='Show status')
     list_parser = subparsers.add_parser('list', help='List changesets')
+    mount_efi_parser = subparsers.add_parser('mount-efi', help='Mount EFI partition from Install USB')
     
     args = parser.parse_args()
     
@@ -377,6 +495,7 @@ Examples:
         'setup-env': cmd_setup_env,
         'status': cmd_status,
         'list': cmd_list,
+        'mount-efi': cmd_mount_efi,
     }
     
     cmd_func = commands.get(args.command)
