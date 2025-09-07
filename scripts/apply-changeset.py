@@ -304,14 +304,6 @@ def changeset_to_operations(changeset_data):
             "value": changeset_data['scan_policy']
         })
     
-    # Handle timeout setting - set Misc.Boot.Timeout
-    if 'timeout' in changeset_data:
-        operations.append({
-            "op": "set",
-            "path": ["Misc", "Boot", "Timeout"],
-            "value": changeset_data['timeout']
-        })
-    
     # Handle misc_debug settings - set Misc.Debug options
     if 'misc_debug' in changeset_data:
         debug_settings = changeset_data['misc_debug']
@@ -365,106 +357,70 @@ def changeset_to_operations(changeset_data):
                 "value": nvram_data['write_flash']
             })
     
-    # Handle additional Misc settings
-    if 'picker_mode' in changeset_data:
+    # Handle nested misc_boot settings - set Misc.Boot options
+    if 'misc_boot' in changeset_data:
+        boot_settings = changeset_data['misc_boot']
+        # Map snake_case to correct OpenCore PascalCase
+        boot_key_mapping = {
+            'timeout': 'Timeout',
+            'picker_mode': 'PickerMode',
+            'poll_apple_hot_keys': 'PollAppleHotKeys',
+            'show_picker': 'ShowPicker',
+            'hide_auxiliary': 'HideAuxiliary',
+            'picker_attributes': 'PickerAttributes',
+            'picker_audio_assist': 'PickerAudioAssist',
+            'picker_variant': 'PickerVariant',
+            'console_attributes': 'ConsoleAttributes',
+            'takeoff_delay': 'TakeoffDelay',
+            'hibernate_mode': 'HibernateMode',
+            'hibernate_skips_picker': 'HibernateSkipsPicker',
+            'instance_identifier': 'InstanceIdentifier',
+            'launcher_option': 'LauncherOption',
+            'launcher_path': 'LauncherPath'
+        }
+        
+        for setting, value in boot_settings.items():
+            plist_key = boot_key_mapping.get(setting, setting)
+            operations.append({
+                "op": "set",
+                "path": ["Misc", "Boot", plist_key],
+                "value": value
+            })
+    
+    # Handle BlessOverride setting - set Misc.BlessOverride
+    if 'misc_bless_override' in changeset_data:
         operations.append({
             "op": "set",
-            "path": ["Misc", "Boot", "PickerMode"],
-            "value": changeset_data['picker_mode']
+            "path": ["Misc", "BlessOverride"],
+            "value": changeset_data['misc_bless_override']
         })
     
-    if 'poll_apple_hot_keys' in changeset_data:
-        operations.append({
-            "op": "set",
-            "path": ["Misc", "Boot", "PollAppleHotKeys"],
-            "value": changeset_data['poll_apple_hot_keys']
-        })
+    # Handle nested misc_security settings - set Misc.Security options
+    if 'misc_security' in changeset_data:
+        security_settings = changeset_data['misc_security']
+        # Map snake_case to correct OpenCore PascalCase
+        security_key_mapping = {
+            'secureboot_model': 'SecureBootModel',
+            'vault': 'Vault',
+            'scan_policy': 'ScanPolicy',
+            'allow_set_default': 'AllowSetDefault',
+            'expose_sensitive_data': 'ExposeSensitiveData',
+            'auth_restart': 'AuthRestart',
+            'blacklist_apple_update': 'BlacklistAppleUpdate',
+            'dmg_loading': 'DmgLoading',
+            'enable_password': 'EnablePassword',
+            'halt_level': 'HaltLevel'
+        }
+        
+        for setting, value in security_settings.items():
+            plist_key = security_key_mapping.get(setting, setting)
+            operations.append({
+                "op": "set",
+                "path": ["Misc", "Security", plist_key],
+                "value": value
+            })
     
-    if 'show_picker' in changeset_data:
-        operations.append({
-            "op": "set",
-            "path": ["Misc", "Boot", "ShowPicker"],
-            "value": changeset_data['show_picker']
-        })
-    
-    if 'hide_auxiliary' in changeset_data:
-        operations.append({
-            "op": "set",
-            "path": ["Misc", "Boot", "HideAuxiliary"],
-            "value": changeset_data['hide_auxiliary']
-        })
-    
-    if 'picker_attributes' in changeset_data:
-        operations.append({
-            "op": "set",
-            "path": ["Misc", "Boot", "PickerAttributes"],
-            "value": changeset_data['picker_attributes']
-        })
-    
-    if 'picker_audio_assist' in changeset_data:
-        operations.append({
-            "op": "set",
-            "path": ["Misc", "Boot", "PickerAudioAssist"],
-            "value": changeset_data['picker_audio_assist']
-        })
-    
-    if 'picker_variant' in changeset_data:
-        operations.append({
-            "op": "set",
-            "path": ["Misc", "Boot", "PickerVariant"],
-            "value": changeset_data['picker_variant']
-        })
-    
-    if 'console_attributes' in changeset_data:
-        operations.append({
-            "op": "set",
-            "path": ["Misc", "Boot", "ConsoleAttributes"],
-            "value": changeset_data['console_attributes']
-        })
-    
-    if 'takeoff_delay' in changeset_data:
-        operations.append({
-            "op": "set",
-            "path": ["Misc", "Boot", "TakeoffDelay"],
-            "value": changeset_data['takeoff_delay']
-        })
-    
-    if 'hibernate_mode' in changeset_data:
-        operations.append({
-            "op": "set",
-            "path": ["Misc", "Boot", "HibernateMode"],
-            "value": changeset_data['hibernate_mode']
-        })
-    
-    if 'hibernate_skips_picker' in changeset_data:
-        operations.append({
-            "op": "set",
-            "path": ["Misc", "Boot", "HibernateSkipsPicker"],
-            "value": changeset_data['hibernate_skips_picker']
-        })
-    
-    if 'instance_identifier' in changeset_data:
-        operations.append({
-            "op": "set",
-            "path": ["Misc", "Boot", "InstanceIdentifier"],
-            "value": changeset_data['instance_identifier']
-        })
-    
-    if 'launcher_option' in changeset_data:
-        operations.append({
-            "op": "set",
-            "path": ["Misc", "Boot", "LauncherOption"],
-            "value": changeset_data['launcher_option']
-        })
-    
-    if 'launcher_path' in changeset_data:
-        operations.append({
-            "op": "set",
-            "path": ["Misc", "Boot", "LauncherPath"],
-            "value": changeset_data['launcher_path']
-        })
-    
-    # Handle additional Security settings
+    # Handle additional Security settings (legacy support)
     if 'allow_set_default' in changeset_data:
         operations.append({
             "op": "set",

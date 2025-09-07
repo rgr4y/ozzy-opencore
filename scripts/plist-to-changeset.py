@@ -150,38 +150,48 @@ def extract_misc_settings(config: Dict[str, Any]) -> Dict[str, Any]:
     if 'Misc' in config:
         misc_config = config['Misc']
         
-        # Security settings
+        # Security settings - nested under misc_security
         if 'Security' in misc_config:
             security = misc_config['Security']
-            misc['secureboot_model'] = security.get('SecureBootModel', 'Default')
-            misc['vault'] = security.get('Vault', 'Optional')
-            misc['scan_policy'] = security.get('ScanPolicy', 0)
-            misc['allow_set_default'] = security.get('AllowSetDefault', True)
-            misc['expose_sensitive_data'] = security.get('ExposeSensitiveData', 6)
-            misc['auth_restart'] = security.get('AuthRestart', False)
-            misc['blacklist_apple_update'] = security.get('BlacklistAppleUpdate', True)
-            misc['dmg_loading'] = security.get('DmgLoading', 'Signed')
-            misc['enable_password'] = security.get('EnablePassword', False)
-            misc['halt_level'] = security.get('HaltLevel', 2147483648)
+            misc['misc_security'] = {
+                'secureboot_model': security.get('SecureBootModel', 'Default'),
+                'vault': security.get('Vault', 'Optional'),
+                'scan_policy': security.get('ScanPolicy', 0),
+                'allow_set_default': security.get('AllowSetDefault', True),
+                'expose_sensitive_data': security.get('ExposeSensitiveData', 6),
+                'auth_restart': security.get('AuthRestart', False),
+                'blacklist_apple_update': security.get('BlacklistAppleUpdate', True),
+                'dmg_loading': security.get('DmgLoading', 'Signed'),
+                'enable_password': security.get('EnablePassword', False),
+                'halt_level': security.get('HaltLevel', 2147483648)
+            }
         
-        # Boot settings
+        # Boot settings - nested under misc_boot
         if 'Boot' in misc_config:
             boot = misc_config['Boot']
-            misc['timeout'] = boot.get('Timeout', 5)
-            misc['picker_mode'] = boot.get('PickerMode', 'Builtin')
-            misc['poll_apple_hot_keys'] = boot.get('PollAppleHotKeys', False)
-            misc['show_picker'] = boot.get('ShowPicker', True)
-            misc['hide_auxiliary'] = boot.get('HideAuxiliary', True)
-            misc['picker_attributes'] = boot.get('PickerAttributes', 1)
-            misc['picker_audio_assist'] = boot.get('PickerAudioAssist', False)
-            misc['picker_variant'] = boot.get('PickerVariant', 'Auto')
-            misc['console_attributes'] = boot.get('ConsoleAttributes', 0)
-            misc['takeoff_delay'] = boot.get('TakeoffDelay', 0)
-            misc['hibernate_mode'] = boot.get('HibernateMode', 'None')
-            misc['hibernate_skips_picker'] = boot.get('HibernateSkipsPicker', False)
-            misc['instance_identifier'] = boot.get('InstanceIdentifier', '')
-            misc['launcher_option'] = boot.get('LauncherOption', 'Disabled')
-            misc['launcher_path'] = boot.get('LauncherPath', 'Default')
+            misc['misc_boot'] = {
+                'timeout': boot.get('Timeout', 5),
+                'picker_mode': boot.get('PickerMode', 'Builtin'),
+                'poll_apple_hot_keys': boot.get('PollAppleHotKeys', False),
+                'show_picker': boot.get('ShowPicker', True),
+                'hide_auxiliary': boot.get('HideAuxiliary', True),
+                'picker_attributes': boot.get('PickerAttributes', 1),
+                'picker_audio_assist': boot.get('PickerAudioAssist', False),
+                'picker_variant': boot.get('PickerVariant', 'Auto'),
+                'console_attributes': boot.get('ConsoleAttributes', 0),
+                'takeoff_delay': boot.get('TakeoffDelay', 0),
+                'hibernate_mode': boot.get('HibernateMode', 'None'),
+                'hibernate_skips_picker': boot.get('HibernateSkipsPicker', False),
+                'instance_identifier': boot.get('InstanceIdentifier', ''),
+                'launcher_option': boot.get('LauncherOption', 'Disabled'),
+                'launcher_path': boot.get('LauncherPath', 'Default')
+            }
+        
+        # BlessOverride settings
+        if 'BlessOverride' in misc_config:
+            bless_override = misc_config['BlessOverride']
+            if bless_override:  # Only include if not empty
+                misc['misc_bless_override'] = bless_override
         
         # Debug settings
         if 'Debug' in misc_config:
