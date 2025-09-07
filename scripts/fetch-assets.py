@@ -181,11 +181,36 @@ def main():
     if macserial_bin.exists():
         subprocess.run(["chmod", "+x", str(macserial_bin)])
 
-    openruntime_efi = oc_files_dir / "EFI" / "OC" / "Drivers" / "OpenRuntime.efi"
-    if openruntime_efi.exists():
-        shutil.copy2(openruntime_efi, BUILD / "efi" / "EFI" / "OC" / "Drivers" / "OpenRuntime.efi")
+    # Copy essential OpenCore drivers only (not all drivers)
+    # Drivers should be managed by changesets, not copied wholesale
+    oc_drivers_dir = oc_files_dir / "EFI" / "OC" / "Drivers"
+    if oc_drivers_dir.exists():
+        print("[*] Copying essential OpenCore drivers...")
+        
+        # Only copy the absolutely essential drivers that are always needed
+        essential_drivers = [
+            "OpenRuntime.efi",  # Always required for OpenCore operation
+        ]
+        
+        copied_count = 0
+        for driver_name in essential_drivers:
+            driver_file = oc_drivers_dir / driver_name
+            if driver_file.exists():
+                shutil.copy2(driver_file, BUILD / "efi" / "EFI" / "OC" / "Drivers" / driver_name)
+                copied_count += 1
+                print(f"[*] Copied essential driver: {driver_name}")
+            else:
+                print(f"[!] Essential driver not found: {driver_name}")
+        
+        print(f"[✓] Copied {copied_count} essential OpenCore drivers")
+        print("[*] Additional drivers will be managed by changesets")
+        
+        # Verify OpenRuntime.efi specifically since it's required
+        if not (BUILD / "efi" / "EFI" / "OC" / "Drivers" / "OpenRuntime.efi").exists():
+            print("[!] OpenRuntime.efi not found after copying")
+            sys.exit(1)
     else:
-        print("[!] OpenRuntime.efi not found")
+        print("[!] OpenCore drivers directory not found")
         sys.exit(1)
 
     # Copy tools (these may not exist in all builds)

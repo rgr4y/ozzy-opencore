@@ -43,6 +43,22 @@
     {
       "name": "AppleALC.kext",
       "repo": "acidanthera/AppleALC"
+    },
+    {
+      "name": "AirportBrcmFixup.kext",
+      "repo": "acidanthera/AirportBrcmFixup"
+    },
+    {
+      "name": "BrcmFirmwareData.kext",
+      "repo": "acidanthera/BrcmPatchRAM"
+    },
+    {
+      "name": "BrcmPatchRAM3.kext",
+      "repo": "acidanthera/BrcmPatchRAM"
+    },
+    {
+      "name": "BlueToolFixup.kext",
+      "repo": "acidanthera/BrcmPatchRAM"
     }
   ]
 }

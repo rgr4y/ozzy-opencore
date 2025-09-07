@@ -82,6 +82,70 @@ def manage_changeset_kexts(changeset_name, target_efi_dir):
     log(f"✓ Kext management complete: removed {removed_count}, kept {len(changeset_kexts)}")
     return True
 
+def manage_changeset_drivers(changeset_name, target_efi_dir):
+    """
+    Copy drivers specified in changeset to the EFI Drivers directory.
+    
+    Args:
+        changeset_name: Name of the changeset
+        target_efi_dir: Target EFI directory containing OC subfolder
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    from . import log, warn, error
+    from .changeset import load_changeset
+    import shutil
+    
+    # Load changeset
+    changeset_data = load_changeset(changeset_name)
+    if not changeset_data:
+        error(f"Failed to load changeset: {changeset_name}")
+        return False
+    
+    # Get the drivers directory
+    drivers_dir = target_efi_dir / 'OC' / 'Drivers'
+    drivers_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Copy drivers specified in changeset
+    if 'uefi_drivers' in changeset_data:
+        log(f"Copying drivers specified in changeset...")
+        copied_count = 0
+        
+        for driver in changeset_data['uefi_drivers']:
+            driver_name = driver['path']
+            
+            # Skip if already exists (e.g. essential drivers)
+            target_driver = drivers_dir / driver_name
+            if target_driver.exists():
+                log(f"Driver already exists: {driver_name}")
+                continue
+            
+            # Look for drivers in various locations
+            source_locations = [
+                ROOT / "out" / "opencore" / "X64" / "EFI" / "OC" / "Drivers" / driver_name,
+                ROOT / "out" / "ocbinarydata-repo" / "Drivers" / driver_name,
+                ROOT / "out" / "opencore" / "Drivers" / driver_name,
+                ROOT / "assets" / "drivers" / driver_name,
+            ]
+            
+            source_driver = None
+            for location in source_locations:
+                if location.exists():
+                    source_driver = location
+                    break
+            
+            if source_driver:
+                shutil.copy2(source_driver, target_driver)
+                log(f"Copied driver: {driver_name}")
+                copied_count += 1
+            else:
+                warn(f"Driver not found: {driver_name} (searched in {len(source_locations)} locations)")
+        
+        log(f"Driver management completed: {copied_count} drivers copied")
+    
+    return True
+
 def build_complete_efi_structure(changeset_name, force_rebuild=False):
     """
     Build a complete EFI structure with OpenCore, kexts, drivers, and applied changeset.
@@ -122,6 +186,11 @@ def build_complete_efi_structure(changeset_name, force_rebuild=False):
     # Prune kexts based on changeset
     if not manage_changeset_kexts(changeset_name, target_dir):
         error("Failed to manage kexts for changeset")
+        return False
+    
+    # Copy drivers specified in changeset
+    if not manage_changeset_drivers(changeset_name, target_dir):
+        error("Failed to manage drivers for changeset")
         return False
     
     # Final validation

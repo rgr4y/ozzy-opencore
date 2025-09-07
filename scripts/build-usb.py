@@ -94,7 +94,7 @@ def create_usb_efi(changeset_name, output_dir=None, force_rebuild=False, dry_run
             if not dry_run:
                 changeset_data = load_changeset(changeset_name)
                 if changeset_data:
-                    if validate_and_generate_smbios(changeset_data, force=True):
+                    if validate_and_generate_smbios(changeset_data, force=False):
                         if not save_changeset(changeset_name, changeset_data):
                             warn("Failed to save SMBIOS updates to changeset")
                     else:

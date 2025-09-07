@@ -13,7 +13,7 @@ from pathlib import Path
 
 # Import our common libraries
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from lib import ROOT, log, warn, error, info, run_command, list_available_changesets
+from lib import ROOT, log, warn, error, info, run_command, list_available_changesets, list_newest_changesets
 
 def switch_changeset(changeset_name, force=False):
     """Switch to a different changeset with validation and feedback"""
@@ -25,11 +25,11 @@ def switch_changeset(changeset_name, force=False):
     if not changeset_path.exists():
         error(f"Changeset not found: {changeset_path}")
         
-        # Show available changesets
-        available = list_available_changesets()
-        if available:
-            info("Available changesets:")
-            for cs in sorted(available):
+        # Show recent changesets to help user choose
+        recent = list_newest_changesets(5)
+        if recent:
+            info("Recent changesets (try one of these):")
+            for cs in recent:
                 info(f"  - {cs}")
         return False
     

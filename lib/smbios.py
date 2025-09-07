@@ -32,23 +32,26 @@ def generate_smbios_data(model: str = "iMacPro1,1") -> Tuple[str, str]:
     """Generate SMBIOS data using macserial utility"""
     macserial_path = get_macserial_path()
     
-    # Run macserial to generate serial and MLB
+    # Run macserial to generate serial and MLB  
     cmd = [str(macserial_path), "-a", "-m", model]
     result = subprocess.run(cmd, capture_output=True, text=True)
     
     if result.returncode != 0:
         raise RuntimeError(f"macserial failed: {result.stderr}")
     
-    # Parse output - format is typically: "Type: Serial | MLB"
+    # Parse output - format with -a flag is: "Model | Serial | MLB" (one per line)
     output = result.stdout.strip()
     lines = output.split('\n')
     
+    # Get the first valid line with a pipe separator
     for line in lines:
-        if model in line and '|' in line:
+        line = line.strip()
+        if '|' in line:
             parts = line.split('|')
-            if len(parts) >= 2:
-                serial = parts[0].split(':')[-1].strip()
-                mlb = parts[1].strip()
+            if len(parts) >= 3:
+                # With -a flag: parts[0] = Model, parts[1] = Serial, parts[2] = MLB
+                serial = parts[1].strip()
+                mlb = parts[2].strip()
                 return serial, mlb
     
     raise RuntimeError(f"Could not parse macserial output: {output}")

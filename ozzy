@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'lib'))
 
 # Import basic utilities
-from lib import ROOT, log, warn, error, info, list_available_changesets
+from lib import ROOT, log, warn, error, info, list_available_changesets, list_newest_changesets
 
 def run_script(script_path, args_list, description):
     """Run a script with the given arguments"""
@@ -104,9 +104,12 @@ def cmd_generate_smbios(args):
         warn("Python environment not ready. Run: ./ozzy setup-env")
         return False
     
-    script = ROOT / "scripts" / "generate-smbios.py"
+    script = ROOT / "scripts" / "generate-serial.py"
     changeset_name = normalize_changeset_name(args.changeset)
-    return run_script(script, [changeset_name], "Generate SMBIOS")
+    script_args = [changeset_name]
+    if hasattr(args, 'force') and args.force:
+        script_args.append('--force')
+    return run_script(script, script_args, "Generate SMBIOS")
 
 def cmd_generate_serial(args):
     """Generate serial numbers and UUIDs"""
@@ -166,14 +169,21 @@ def cmd_full_deploy(args):
         warn("Python environment not ready. Run: ./ozzy setup-env")
         return False
     
+    # Validate argument combinations
+    if getattr(args, 'iso_only', False) and getattr(args, 'force', False):
+        error("Cannot use --iso-only and --force together. --iso-only skips the apply step, making --force redundant.")
+        return False
+    
     workflow = ROOT / "workflows" / "full-deploy.py"
     changeset_name = normalize_changeset_name(args.changeset)
     
     cmd_args = [changeset_name]
-    if getattr(args, 'rebuild', False):
-        cmd_args.append('--rebuild')
+    if getattr(args, 'force', False):
+        cmd_args.append('--force')
     if getattr(args, 'build_only', False):
         cmd_args.append('--build-only')
+    if getattr(args, 'iso_only', False):
+        cmd_args.append('--iso-only')
     return run_workflow(workflow, cmd_args, "Full deploy workflow")
 
 def cmd_switch(args):
@@ -479,7 +489,7 @@ Workflow Commands (Main Use Cases):
   switch             Switch to different changeset for testing
 
 Utility Commands:
-  generate-smbios    Generate SMBIOS data for changeset
+  generate-smbios    Generate SMBIOS data for changeset (serial, MLB, UUID, ROM)
   generate-serial    Generate serial numbers and UUIDs
   read-config        Convert existing config.plist to changeset format
   fetch              Fetch OpenCore assets
@@ -490,7 +500,8 @@ Utility Commands:
 
 Examples:
   ./ozzy full-usb myconfig --output ./usb
-  ./ozzy full-deploy myconfig --rebuild
+  ./ozzy full-deploy myconfig --force
+  ./ozzy full-deploy myconfig --iso-only --force
   ./ozzy switch testconfig
   ./ozzy generate-serial myconfig --force
   ./ozzy read-config ./path/to/config.plist --output myconfig.yaml
@@ -519,6 +530,7 @@ Examples:
     
     smbios_parser = subparsers.add_parser('generate-smbios', help='Generate SMBIOS')
     smbios_parser.add_argument('changeset', help='Changeset name (without .yaml)')
+    smbios_parser.add_argument('--force', '-f', action='store_true', help='Force generation even if values are not placeholders')
     
     # Serial generation command
     serial_parser = subparsers.add_parser('generate-serial', help='Generate serial numbers')
@@ -540,8 +552,9 @@ Examples:
     
     full_deploy_parser = subparsers.add_parser('full-deploy', help='Full deploy workflow')
     full_deploy_parser.add_argument('changeset', help='Changeset name (without .yaml)')
-    full_deploy_parser.add_argument('--rebuild', '-r', action='store_true', help='Force rebuild')
+    full_deploy_parser.add_argument('--force', '-f', action='store_true', help='Force rebuild')
     full_deploy_parser.add_argument('--build-only', '-b', action='store_true', help='Build only')
+    full_deploy_parser.add_argument('--iso-only', '-i', action='store_true', help='Skip fetch/apply/validation, build ISO and deploy only')
     
     switch_parser = subparsers.add_parser('switch', help='Switch changeset')
     switch_parser.add_argument('changeset', help='Changeset name (without .yaml)')

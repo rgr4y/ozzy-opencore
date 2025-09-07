@@ -70,7 +70,6 @@ def deploy_to_proxmox(changeset_name=None, force_rebuild=False):
     
     vmid = config['vmid']
     workdir = config['workdir']
-    installer_iso = config['installer_iso']
     
     log(f"Deploying to VM {vmid} on Proxmox")
     
@@ -116,12 +115,12 @@ def deploy_to_proxmox(changeset_name=None, force_rebuild=False):
     iso_name = f"opencore-{changeset_name}.iso" if changeset_name else "opencore.iso"
     log(f"Uploading {iso_path} to Proxmox as {iso_name}...")
     
-    if not scp(f"{iso_path}", f"/var/lib/vz/template/iso/{iso_name}"):
+    if not scp(iso_path, f"/var/lib/vz/template/iso/{iso_name}"):
         return False
     
     # Stop VM if running
     log(f"Stopping VM {vmid} if running...")
-    ssh(f"qm stop {vmid}", check=False)  # Don't fail if VM is already stopped
+    ssh(f"qm stop {vmid}")  # Don't fail if VM is already stopped
     
     # Configure VM based on changeset
     configure_storage = True

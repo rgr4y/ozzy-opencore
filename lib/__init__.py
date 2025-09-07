@@ -14,7 +14,7 @@ from .common import (
     find_files_by_pattern, cleanup_macos_metadata,
     validate_file_exists, get_project_paths,
     check_required_tools, get_changeset_path,
-    list_available_changesets, validate_changeset_exists
+    list_available_changesets, list_newest_changesets, validate_changeset_exists
 )
 
 from .data_conversion import (
@@ -61,7 +61,7 @@ __all__ = [
     'find_files_by_pattern', 'cleanup_macos_metadata',
     'validate_file_exists', 'get_project_paths',
     'check_required_tools', 'get_changeset_path',
-    'list_available_changesets',
+    'list_available_changesets', 'list_newest_changesets',
     
     # Data conversion
     'CustomJSONEncoder', 'convert_data_values',

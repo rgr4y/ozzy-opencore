@@ -18,14 +18,47 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from lib import (
     ROOT, log, warn, error,
     convert_data_values, CustomJSONEncoder,
-    validate_file_exists
+    validate_file_exists, validate_changeset_exists
 )
 from lib.changeset import apply_amd_vanilla_patches_to_data, get_amd_vanilla_patch_info
 
 # Project-specific paths
 EFI = ROOT / "out" / "build" / "efi" / "EFI" / "OC"
-TEMPLATE_PLIST = ROOT / "efi-template" / "EFI" / "OC" / "config.plist"
+TEMPLATE_PLIST = ROOT / "assets" / "config.plist.TEMPLATE"
 PATCHER = ROOT / "scripts" / "patch-plist.py"
+
+def copy_acpi_files(acpi_files):
+    """Copy ACPI .aml files from OpenCore samples to the ACPI directory"""
+    if not acpi_files:
+        return
+        
+    # Find OpenCore ACPI samples directory
+    opencore_path = ROOT / "out" / "opencore"
+    acpi_samples_dir = opencore_path / "Docs" / "AcpiSamples" / "Binaries"
+    
+    if not acpi_samples_dir.exists():
+        warn(f"ACPI samples directory not found: {acpi_samples_dir}")
+        return
+    
+    # Ensure ACPI directory exists
+    acpi_target_dir = EFI / "ACPI"
+    acpi_target_dir.mkdir(parents=True, exist_ok=True)
+    
+    copied_count = 0
+    for acpi_file in acpi_files:
+        source_file = acpi_samples_dir / acpi_file
+        target_file = acpi_target_dir / acpi_file
+        
+        if source_file.exists():
+            import shutil
+            shutil.copy2(source_file, target_file)
+            copied_count += 1
+            log(f"✓ Copied ACPI file: {acpi_file}")
+        else:
+            warn(f"ACPI file not found in samples: {acpi_file}")
+    
+    if copied_count > 0:
+        log(f"✓ Copied {copied_count} ACPI file(s)")
 
 def changeset_to_operations(changeset_data):
     """Convert changeset data to patch operations for patch-plist.py"""
@@ -63,7 +96,7 @@ def changeset_to_operations(changeset_data):
             kext_entry = {
                 "Arch": "Any",
                 "BundlePath": kext['bundle'],
-                "Comment": "",
+                "Comment": kext['bundle'],  # Use bundle path as comment
                 "Enabled": True,
                 "ExecutablePath": exec_path,
                 "MaxKernel": "",
@@ -176,7 +209,7 @@ def changeset_to_operations(changeset_data):
             acpi_entry = {
                 "Path": acpi_file,
                 "Enabled": True,
-                "Comment": f"Added by changeset"
+                "Comment": acpi_file  # Use filename as comment
             }
             operations.append({
                 "op": "append",
@@ -224,15 +257,15 @@ def changeset_to_operations(changeset_data):
             # Then append the new tool entry
             tool_entry = {
                 "Name": tool['Name'],
-                "Path": tool['Path'],
+                "Path": tool['Path'], 
                 "Enabled": tool.get('Enabled', True),
+                "Arguments": tool.get('Arguments', ''),
                 "Auxiliary": tool.get('Auxiliary', False),
-                "Arguments": "",
-                "Comment": "",
-                "Flavour": "Auto",
-                "FullNvramAccess": False,
-                "RealPath": False,
-                "TextMode": False
+                "Comment": tool.get('Comment', ''),
+                "Flavour": tool.get('Flavour', 'Auto'),
+                "FullNvramAccess": tool.get('FullNvramAccess', False),
+                "RealPath": tool.get('RealPath', False),
+                "TextMode": tool.get('TextMode', False)
             }
             operations.append({
                 "op": "append",
@@ -289,6 +322,16 @@ def changeset_to_operations(changeset_data):
                 "value": value
             })
     
+    # Handle misc_serial settings - set Misc.Serial options
+    if 'misc_serial' in changeset_data:
+        serial_settings = changeset_data['misc_serial']
+        for setting, value in serial_settings.items():
+            operations.append({
+                "op": "set",
+                "path": ["Misc", "Serial", setting],
+                "value": value
+            })
+    
     # Handle NVRAM settings
     if 'nvram' in changeset_data:
         nvram_data = changeset_data['nvram']
@@ -322,26 +365,252 @@ def changeset_to_operations(changeset_data):
                 "value": nvram_data['write_flash']
             })
     
-    return operations
+    # Handle additional Misc settings
+    if 'picker_mode' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Boot", "PickerMode"],
+            "value": changeset_data['picker_mode']
+        })
+    
+    if 'poll_apple_hot_keys' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Boot", "PollAppleHotKeys"],
+            "value": changeset_data['poll_apple_hot_keys']
+        })
+    
+    if 'show_picker' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Boot", "ShowPicker"],
+            "value": changeset_data['show_picker']
+        })
+    
+    if 'hide_auxiliary' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Boot", "HideAuxiliary"],
+            "value": changeset_data['hide_auxiliary']
+        })
+    
+    if 'picker_attributes' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Boot", "PickerAttributes"],
+            "value": changeset_data['picker_attributes']
+        })
+    
+    if 'picker_audio_assist' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Boot", "PickerAudioAssist"],
+            "value": changeset_data['picker_audio_assist']
+        })
+    
+    if 'picker_variant' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Boot", "PickerVariant"],
+            "value": changeset_data['picker_variant']
+        })
+    
+    if 'console_attributes' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Boot", "ConsoleAttributes"],
+            "value": changeset_data['console_attributes']
+        })
+    
+    if 'takeoff_delay' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Boot", "TakeoffDelay"],
+            "value": changeset_data['takeoff_delay']
+        })
+    
+    if 'hibernate_mode' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Boot", "HibernateMode"],
+            "value": changeset_data['hibernate_mode']
+        })
+    
+    if 'hibernate_skips_picker' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Boot", "HibernateSkipsPicker"],
+            "value": changeset_data['hibernate_skips_picker']
+        })
+    
+    if 'instance_identifier' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Boot", "InstanceIdentifier"],
+            "value": changeset_data['instance_identifier']
+        })
+    
+    if 'launcher_option' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Boot", "LauncherOption"],
+            "value": changeset_data['launcher_option']
+        })
+    
+    if 'launcher_path' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Boot", "LauncherPath"],
+            "value": changeset_data['launcher_path']
+        })
+    
+    # Handle additional Security settings
+    if 'allow_set_default' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Security", "AllowSetDefault"],
+            "value": changeset_data['allow_set_default']
+        })
+    
+    if 'expose_sensitive_data' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Security", "ExposeSensitiveData"],
+            "value": changeset_data['expose_sensitive_data']
+        })
+    
+    if 'auth_restart' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Security", "AuthRestart"],
+            "value": changeset_data['auth_restart']
+        })
+    
+    if 'blacklist_apple_update' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Security", "BlacklistAppleUpdate"],
+            "value": changeset_data['blacklist_apple_update']
+        })
+    
+    if 'dmg_loading' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Security", "DmgLoading"],
+            "value": changeset_data['dmg_loading']
+        })
+    
+    if 'enable_password' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Security", "EnablePassword"],
+            "value": changeset_data['enable_password']
+        })
+    
+    if 'halt_level' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Security", "HaltLevel"],
+            "value": changeset_data['halt_level']
+        })
+    
+    # Handle Misc Tools
+    if 'misc_tools' in changeset_data:
+        # Clear existing tools first
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Tools"],
+            "value": []
+        })
+        
+        # Add each tool individually to ensure proper structure
+        for tool in changeset_data['misc_tools']:
+            tool_entry = {
+                "Name": tool['Name'],
+                "Path": tool['Path'], 
+                "Enabled": tool.get('Enabled', True),
+                "Arguments": tool.get('Arguments', ''),
+                "Auxiliary": tool.get('Auxiliary', False),
+                "Comment": tool.get('Comment', ''),
+                "Flavour": tool.get('Flavour', 'Auto'),
+                "FullNvramAccess": tool.get('FullNvramAccess', False),
+                "RealPath": tool.get('RealPath', False),
+                "TextMode": tool.get('TextMode', False)
+            }
+            operations.append({
+                "op": "append",
+                "path": ["Misc", "Tools"],
+                "entry": tool_entry,
+                "key": "Name"
+            })
+    
+    # Handle Misc Entries (only if there are actual entries)
+    if 'misc_entries' in changeset_data and changeset_data['misc_entries']:
+        # Replace the entire Entries array only if there are actual entries
+        operations.append({
+            "op": "set",
+            "path": ["Misc", "Entries"],
+            "value": changeset_data['misc_entries']
+        })
+    # If empty entries, don't set anything - let template default handle it
+    
+    # Handle UEFI Output settings
+    if 'uefi_output' in changeset_data:
+        uefi_output = changeset_data['uefi_output']
+        for setting, value in uefi_output.items():
+            operations.append({
+                "op": "set",
+                "path": ["UEFI", "Output", setting],
+                "value": value
+            })
+    
+    # Handle UEFI APFS settings
+    if 'uefi_apfs' in changeset_data:
+        uefi_apfs = changeset_data['uefi_apfs']
+        for setting, value in uefi_apfs.items():
+            operations.append({
+                "op": "set",
+                "path": ["UEFI", "APFS", setting],
+                "value": value
+            })
+    
+    # Handle UEFI Quirks
+    if 'uefi_quirks' in changeset_data:
+        uefi_quirks = changeset_data['uefi_quirks']
+        for setting, value in uefi_quirks.items():
+            operations.append({
+                "op": "set",
+                "path": ["UEFI", "Quirks", setting],
+                "value": value
+            })
+    
+    # Handle ConnectDrivers
+    if 'connect_drivers' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["UEFI", "ConnectDrivers"],
+            "value": changeset_data['connect_drivers']
+        })
+    
+    # Handle Protocol Overrides
+    if 'protocol_overrides' in changeset_data:
+        protocol_overrides = changeset_data['protocol_overrides']
+        for setting, value in protocol_overrides.items():
+            operations.append({
+                "op": "set",
+                "path": ["UEFI", "ProtocolOverrides", setting],
+                "value": value
+            })
+    
+    # Handle Reserved Memory
+    if 'reserved_memory' in changeset_data:
+        operations.append({
+            "op": "set",
+            "path": ["UEFI", "ReservedMemory"],
+            "value": changeset_data['reserved_memory']
+        })
 
-def post_process_config(config_path):
-    """Fix binary data format issues after patching"""
-    import plistlib
-    
-    # Read the plist
-    with open(config_path, 'rb') as f:
-        config = plistlib.load(f)
-    
-    # Fix kernel patches binary data
-    if 'Kernel' in config and 'Patch' in config['Kernel']:
-        for patch in config['Kernel']['Patch']:
-            for field in ['Find', 'Replace', 'Mask', 'ReplaceMask']:
-                if field in patch and isinstance(patch[field], list):
-                    patch[field] = bytes(patch[field])
-    
-    # Write back
-    with open(config_path, 'wb') as f:
-        plistlib.dump(config, f)
+    return operations
 
 def post_process_config(config_path):
     """Fix binary data formats and remove warnings"""
@@ -368,12 +637,18 @@ def post_process_config(config_path):
         for device_path, properties in config['DeviceProperties']['Add'].items():
             for prop_name, prop_value in properties.items():
                 if isinstance(prop_value, str):
-                    try:
-                        # Convert base64 string to binary data
-                        properties[prop_name] = base64.b64decode(prop_value)
-                    except:
-                        # If it's not valid base64, leave it as string
-                        pass
+                    # Only convert to binary if it looks like base64 and is a property that should be binary
+                    # Properties like layout-id, device-id, etc. are typically base64
+                    # Properties like hda-gfx, model, AAPL,ig-platform-id are often strings
+                    binary_properties = ['layout-id', 'device-id', 'vendor-id', 'subsystem-id', 'subsystem-vendor-id', 'built-in']
+                    if prop_name in binary_properties:
+                        try:
+                            # Convert base64 string to binary data
+                            properties[prop_name] = base64.b64decode(prop_value)
+                        except:
+                            # If it's not valid base64, leave it as string
+                            pass
+                    # Leave other properties as strings (hda-gfx, model, etc.)
     
     # Convert NVRAM base64 strings to binary data
     if 'NVRAM' in config and 'Add' in config['NVRAM']:
@@ -450,9 +725,8 @@ def main():
     
     args = parser.parse_args()
     
-    # Construct the changeset path from the name
-    changeset_path = ROOT / "config" / "changesets" / f"{args.changeset}.yaml"
-    validate_file_exists(changeset_path, "Changeset file")
+    # Validate changeset exists
+    changeset_path = validate_changeset_exists(args.changeset)
     validate_file_exists(TEMPLATE_PLIST, "OpenCore template")
     validate_file_exists(PATCHER, "Plist patcher script")
     
@@ -465,24 +739,57 @@ def main():
         error(f"Failed to load changeset: {e}")
         return 1
     
-    # Check if AMD Vanilla patches are needed
+    # Copy ACPI files if specified in changeset
+    if 'acpi_add' in changeset_data:
+        copy_acpi_files(changeset_data['acpi_add'])
+    
+    # Handle AMD Vanilla patches flag
     amd_enabled = False
-    if 'kernel_patches' in changeset_data:
+    if changeset_data.get('amd_vanilla_patches', False):
+        amd_enabled = True
+        log("AMD Vanilla patches enabled in changeset")
+        # Load and modify AMD patches
+        from lib.changeset import load_amd_vanilla_patches, modify_amd_core_count_patches
+        
+        amd_patches = load_amd_vanilla_patches()
+        if amd_patches:
+            core_count = args.amd_cores or 16
+            modified_amd_patches = modify_amd_core_count_patches(amd_patches, core_count)
+            
+            # Merge with any existing kernel patches
+            existing_patches = changeset_data.get('kernel_patches', [])
+            if existing_patches:
+                log(f"Merging {len(modified_amd_patches)} AMD patches with {len(existing_patches)} existing kernel patches")
+                changeset_data['kernel_patches'] = existing_patches + modified_amd_patches
+            else:
+                log(f"Adding {len(modified_amd_patches)} AMD patches to changeset")
+                changeset_data['kernel_patches'] = modified_amd_patches
+        else:
+            warn("AMD Vanilla patches requested but could not be loaded")
+    
+    # Legacy detection for backwards compatibility
+    elif 'kernel_patches' in changeset_data:
         # Check if any kernel patch mentions AMD
         for patch in changeset_data['kernel_patches']:
             comment = patch.get('Comment', '').lower()
-            if 'amd' in comment or 'authenticamd' in comment or 'genuineintel' in comment:
+            if 'amd' in comment or 'authenticamd' in comment or 'algrey' in comment:
                 amd_enabled = True
+                log("AMD patches detected in kernel_patches (legacy format)")
                 break
     
-    if amd_enabled:
-        log("AMD Vanilla patches detected in changeset")
-        # Apply AMD patches using the library function
-        core_count = args.amd_cores or 16
-        changeset_data = apply_amd_vanilla_patches_to_data(changeset_data, core_count)
-        log("AMD Vanilla patches applied to changeset")
+    if not amd_enabled:
+        log("No AMD patches detected or enabled in changeset")
+    
+    # Validate and generate SMBIOS data if needed
+    if 'smbios' in changeset_data:
+        from lib.smbios import validate_and_generate_smbios
+        log("Validating SMBIOS data...")
+        if validate_and_generate_smbios(changeset_data, force=False):
+            log("SMBIOS validation completed")
+        else:
+            warn("SMBIOS validation failed, continuing with existing values")
     else:
-        log("No AMD patches detected in changeset")
+        warn("No SMBIOS section found in changeset")
     
     # Convert changeset to patch operations
     log("Converting changeset to patch operations")

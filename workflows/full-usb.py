@@ -15,7 +15,7 @@ from pathlib import Path
 
 # Import our common libraries
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from lib import ROOT, log, warn, error, info, run_command
+from lib import ROOT, log, warn, error, info, run_command, list_newest_changesets
 import yaml
 
 def populate_efi_assets(changeset_name):
@@ -212,6 +212,10 @@ def full_usb_workflow(changeset_name, output_path=None, force=False, eject=False
     
     if not changeset_path.exists():
         error(f"Changeset not found: {changeset_path}")
+        # Show recent changesets to help user choose
+        recent = list_newest_changesets(5)
+        if recent:
+            error(f"Recent changesets (try one of these): {', '.join(recent)}")
         return False
     
     cmd = [sys.executable, str(apply_script), changeset_name]  # Pass just the name, not the path

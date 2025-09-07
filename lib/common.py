@@ -80,8 +80,7 @@ def get_remote_config():
         'host': os.getenv('PROXMOX_HOST', '10.0.1.10'),
         'user': os.getenv('PROXMOX_USER', 'root'),
         'vmid': os.getenv('PROXMOX_VMID', '100'),
-        'workdir': os.getenv('PROXMOX_WORKDIR', '/root/workspace'),
-        'installer_iso': os.getenv('PROXMOX_INSTALLER_ISO', 'Sequoia.iso')
+        'workdir': os.getenv('PROXMOX_WORKDIR', '/root/workspace')
     }
 
 def scp(local: Path, remote: str):
@@ -178,7 +177,7 @@ def get_project_paths():
         'out': ROOT / 'out',
         'build_root': ROOT / 'out' / 'build',
         'efi_build': ROOT / 'out' / 'efi',
-        'efi_oc': ROOT / 'out' / 'efi' / 'EFI' / 'OC',
+        'efi_oc': ROOT / 'out' / 'build' / 'efi' / 'EFI' / 'OC',
         'usb_efi': ROOT / 'out' / 'build' / 'usb',
         'deploy_env': ROOT / 'config' / 'deploy.env',
         'sources_json': ROOT / 'config' / 'sources.json',
@@ -220,15 +219,32 @@ def list_available_changesets():
     changesets = list(paths['changesets'].glob('*.yaml'))
     return [cs.stem for cs in sorted(changesets)]
 
+def list_newest_changesets(limit=5):
+    """List the newest changeset files by modification time"""
+    paths = get_project_paths()
+    if not paths['changesets'].exists():
+        return []
+    
+    changesets = list(paths['changesets'].glob('*.yaml'))
+    if not changesets:
+        return []
+    
+    # Sort by modification time (newest first)
+    changesets_with_mtime = [(cs, cs.stat().st_mtime) for cs in changesets]
+    changesets_with_mtime.sort(key=lambda x: x[1], reverse=True)
+    
+    # Return only the names, limited to specified count
+    return [cs.stem for cs, _ in changesets_with_mtime[:limit]]
+
 def validate_changeset_exists(changeset_name: str) -> Path:
     """Validate that a changeset exists and return its path"""
     changeset_path = get_changeset_path(changeset_name)
     
     if not changeset_path.exists():
-        available = list_available_changesets()
+        newest = list_newest_changesets(5)
         error(f"Changeset file not found: {changeset_path}")
-        if available:
-            error(f"Available changesets: {', '.join(available)}")
+        if newest:
+            error(f"Recent changesets (try one of these): {', '.join(newest)}")
         else:
             error("No changesets found in config/changesets/")
         raise FileNotFoundError(f"Changeset not found: {changeset_name}")
