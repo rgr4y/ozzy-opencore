@@ -37,6 +37,7 @@ usb-efi/
 *.swp
 *.swo
 *~
+assets/*plist*
 
 # macOS
 .DS_Store

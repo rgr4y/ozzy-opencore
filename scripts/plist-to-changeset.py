@@ -190,8 +190,8 @@ def extract_misc_settings(config: Dict[str, Any]) -> Dict[str, Any]:
         # BlessOverride settings
         if 'BlessOverride' in misc_config:
             bless_override = misc_config['BlessOverride']
-            if bless_override:  # Only include if not empty
-                misc['misc_bless_override'] = bless_override
+            # Include BlessOverride even if empty array
+            misc['misc_bless_override'] = bless_override
         
         # Debug settings
         if 'Debug' in misc_config:

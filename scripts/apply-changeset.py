@@ -387,8 +387,8 @@ def changeset_to_operations(changeset_data):
                 "value": value
             })
     
-    # Handle BlessOverride setting - set Misc.BlessOverride
-    if 'misc_bless_override' in changeset_data:
+    # Handle BlessOverride setting - set Misc.BlessOverride (only if not empty)
+    if 'misc_bless_override' in changeset_data and changeset_data['misc_bless_override']:
         operations.append({
             "op": "set",
             "path": ["Misc", "BlessOverride"],
@@ -472,33 +472,35 @@ def changeset_to_operations(changeset_data):
     
     # Handle Misc Tools
     if 'misc_tools' in changeset_data:
-        # Clear existing tools first
-        operations.append({
-            "op": "set",
-            "path": ["Misc", "Tools"],
-            "value": []
-        })
+        tools_list = changeset_data['misc_tools']
         
-        # Add each tool individually to ensure proper structure
-        for tool in changeset_data['misc_tools']:
-            tool_entry = {
-                "Name": tool['Name'],
-                "Path": tool['Path'], 
-                "Enabled": tool.get('Enabled', True),
-                "Arguments": tool.get('Arguments', ''),
-                "Auxiliary": tool.get('Auxiliary', False),
-                "Comment": tool.get('Comment', ''),
-                "Flavour": tool.get('Flavour', 'Auto'),
-                "FullNvramAccess": tool.get('FullNvramAccess', False),
-                "RealPath": tool.get('RealPath', False),
-                "TextMode": tool.get('TextMode', False)
-            }
+        # Only set Tools if there are actual tools to add
+        if tools_list:
+            tools_array = []
+            
+            # Add each tool individually to ensure proper structure
+            for tool in tools_list:
+                tool_entry = {
+                    "Name": tool['Name'],
+                    "Path": tool['Path'], 
+                    "Enabled": tool.get('Enabled', True),
+                    "Arguments": tool.get('Arguments', ''),
+                    "Auxiliary": tool.get('Auxiliary', False),
+                    "Comment": tool.get('Comment', ''),
+                    "Flavour": tool.get('Flavour', 'Auto'),
+                    "FullNvramAccess": tool.get('FullNvramAccess', False),
+                    "RealPath": tool.get('RealPath', False),
+                    "TextMode": tool.get('TextMode', False)
+                }
+                tools_array.append(tool_entry)
+            
+            # Set the tools array only if there are tools
             operations.append({
-                "op": "append",
+                "op": "set",
                 "path": ["Misc", "Tools"],
-                "entry": tool_entry,
-                "key": "Name"
+                "value": tools_array
             })
+        # If tools_list is empty, don't set anything - let template handle it
     
     # Handle Misc Entries (only if there are actual entries)
     if 'misc_entries' in changeset_data and changeset_data['misc_entries']:

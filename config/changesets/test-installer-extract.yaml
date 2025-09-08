@@ -1,0 +1,229 @@
+acpi_add:
+- SSDT-EC-USBX.aml
+kexts:
+- bundle: AppleMCEReporterDisabler.kext
+  exec: ''
+- bundle: Lilu.kext
+  exec: Lilu
+- bundle: VirtualSMC.kext
+  exec: VirtualSMC
+- bundle: WhateverGreen.kext
+  exec: WhateverGreen
+booter_quirks:
+  AllowRelocationBlock: false
+  AvoidRuntimeDefrag: true
+  ClearTaskSwitchBit: false
+  DevirtualiseMmio: false
+  DisableSingleUser: false
+  DisableVariableWrite: false
+  DiscardHibernateMap: false
+  EnableSafeModeSlide: true
+  EnableWriteUnprotector: true
+  FixupAppleEfiImages: false
+  ForceBooterSignature: false
+  ForceExitBootServices: false
+  ProtectMemoryRegions: false
+  ProtectSecureBoot: false
+  ProtectUefiServices: false
+  ProvideCustomSlide: true
+  ProvideMaxSlide: 0
+  RebuildAppleMemoryMap: false
+  ResizeAppleGpuBars: -1
+  SetupVirtualMap: false
+  SignalAppleOS: false
+  SyncRuntimePermissions: false
+kernel_quirks:
+  AppleCpuPmCfgLock: false
+  AppleXcpmCfgLock: false
+  AppleXcpmExtraMsrs: false
+  AppleXcpmForceBoost: false
+  CustomPciSerialDevice: false
+  CustomSMBIOSGuid: false
+  DisableIoMapper: false
+  DisableIoMapperMapping: false
+  DisableLinkeditJettison: true
+  DisableRtcChecksum: false
+  ExtendBTFeatureFlags: false
+  ExternalDiskIcons: false
+  ForceAquantiaEthernet: false
+  ForceSecureBootScheme: true
+  IncreasePciBarSize: false
+  LapicKernelPanic: false
+  LegacyCommpage: false
+  PanicNoKextDump: false
+  PowerTimeoutKernelPanic: false
+  ProvideCurrentCpuInfo: true
+  SetApfsTrimTimeout: -1
+  ThirdPartyDrives: false
+  XhciPortLimit: false
+kernel_emulate:
+  DummyPowerManagement: true
+  MaxKernel: ''
+  MinKernel: ''
+amd_vanilla_patches: false
+smbios:
+  SystemProductName: iMacPro1,1
+  SystemSerialNumber: C02YR04NHX87
+  MLB: C02921609CDJG36AD
+  SystemUUID: 251FAEFB-9179-4672-A2D2-3C7AECEB8F55
+  ROM:
+  - 136
+  - 142
+  - 28
+  - 65
+  - 148
+  - 204
+boot_args: keepsyms=1 debug=0x100 -v darkwake=0
+nvram:
+  add:
+    4D1EDE05-38C7-4A6A-9CC6-4BCCA8B38C14:
+      DefaultBackgroundColor: v7+/AA==
+    4D1FDA02-38C7-4A6A-9CC6-4BCCA8B30102:
+      owner: acidanthera
+    7C436110-AB2A-4BBB-A880-FE41995C9F82:
+      ForceDisplayRotationInEFI: 0
+      SystemAudioVolume: !!binary |
+        Rg==
+      boot-args: keepsyms=1 debug=0x100 -v darkwake=0
+      csr-active-config: AAAAAA==
+      prev-lang:kbd: en-US:0
+      run-efi-updater: 'No'
+  delete:
+    4D1EDE05-38C7-4A6A-9CC6-4BCCA8B38C14:
+    - DefaultBackgroundColor
+    4D1FDA02-38C7-4A6A-9CC6-4BCCA8B30102:
+    - rtc-blacklist
+    - opencore-version
+    - owner
+    7C436110-AB2A-4BBB-A880-FE41995C9F82:
+    - boot-args
+    - ForceDisplayRotationInEFI
+    - prev-lang:kbd
+    - csr-active-config
+  write_flash: true
+misc_security:
+  secureboot_model: Disabled
+  vault: Optional
+  scan_policy: 0
+  allow_set_default: true
+  expose_sensitive_data: 6
+  auth_restart: false
+  blacklist_apple_update: true
+  dmg_loading: Signed
+  enable_password: false
+  halt_level: 2147483648
+misc_boot:
+  timeout: 5
+  picker_mode: External
+  poll_apple_hot_keys: true
+  show_picker: true
+  hide_auxiliary: false
+  picker_attributes: 17
+  picker_audio_assist: false
+  picker_variant: Auto
+  console_attributes: 0
+  takeoff_delay: 0
+  hibernate_mode: None
+  hibernate_skips_picker: false
+  instance_identifier: ''
+  launcher_option: Disabled
+  launcher_path: Default
+misc_bless_override: []
+misc_debug:
+  Target: 3
+  AppleDebug: false
+  ApplePanic: false
+  DisableWatchDog: false
+  SysReport: false
+  DisplayDelay: 0
+  DisplayLevel: 2147483650
+  LogModules: '*'
+misc_tools: []
+misc_entries: []
+misc_serial:
+  Init: false
+  Override: false
+uefi_drivers:
+- path: HfsPlus.efi
+  enabled: true
+  load_early: false
+  arguments: ''
+  comment: HfsPlus.efi
+- path: OpenCanopy.efi
+  enabled: true
+  load_early: false
+  arguments: ''
+  comment: OpenCanopy.efi
+- path: OpenRuntime.efi
+  enabled: true
+  load_early: false
+  arguments: ''
+  comment: OpenRuntime.efi
+- path: ResetNvramEntry.efi
+  enabled: true
+  load_early: false
+  arguments: ''
+  comment: ResetNvramEntry.efi
+- path: UsbMouseDxe.efi
+  enabled: true
+  load_early: false
+  arguments: ''
+  comment: UsbMouseDxe.efi
+uefi_output:
+  Resolution: 1920x1080@32
+  UIScale: 1
+  TextRenderer: BuiltinGraphics
+  ConsoleMode: ''
+  ConsoleFont: ''
+  ClearScreenOnModeSwitch: false
+  DirectGopRendering: false
+  ForceResolution: false
+  GopBurstMode: false
+  GopPassThrough: Disabled
+  IgnoreTextInGraphics: false
+  InitialMode: Auto
+  ProvideConsoleGop: true
+  ReconnectGraphicsOnConnect: false
+  ReconnectOnResChange: false
+  ReplaceTabWithSpace: false
+  SanitiseClearScreen: false
+  UgaPassThrough: false
+uefi_apfs:
+  EnableJumpstart: true
+  GlobalConnect: false
+  HideVerbose: true
+  JumpstartHotPlug: false
+  MinDate: -1
+  MinVersion: -1
+connect_drivers: true
+uefi_quirks:
+  ActivateHpetSupport: false
+  DisableSecurityPolicy: false
+  EnableVectorAcceleration: true
+  EnableVmx: false
+  ExitBootServicesDelay: 0
+  ForceOcWriteFlash: false
+  ForgeUefiSupport: false
+  IgnoreInvalidFlexRatio: false
+  ReleaseUsbOwnership: false
+  ReloadOptionRoms: false
+  RequestBootVarRouting: true
+  ResizeGpuBars: -1
+  ResizeUsePciRbIo: false
+  ShimRetainProtocol: false
+  TscSyncTimeout: 0
+  UnblockFsConnect: false
+device_properties:
+  PciRoot(0x0)/Pci(0x1E,0x0)/Pci(0x1,0x0)/Pci(0x12,0x0):
+    built-in: AQAAAA==
+  PciRoot(0x0)/Pci(0x1E,0x0)/Pci(0x1,0x0)/Pci(0x7,0x0):
+    built-in: AQAAAA==
+  PciRoot(0x0)/Pci(0x1F,0x2):
+    built-in: AQAAAA==
+acpi_quirks:
+  FadtEnableReset: false
+  NormalizeHeaders: false
+  RebaseRegions: false
+  ResetHwSig: false
+  ResetLogoStatus: true
+  SyncTableIds: false
