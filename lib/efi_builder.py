@@ -2,8 +2,11 @@
 """
 EFI Builder Library
 
-Common functions for building complete OpenCore EFI structures.
-Ensures all components (ACPI, Drivers, Tools, Kexts, etc.) are properly included.
+Common functions for building complete OpenCore EFI structu    if 'UefiDrivers' in changeset_data:
+        log("Processing UEFI drivers...")
+        
+        # Get drivers from changeset
+        for driver in changeset_data['UefiDrivers']:nsures all components (ACPI, Drivers, Tools, Kexts, etc.) are properly included.
 """
 
 import shutil

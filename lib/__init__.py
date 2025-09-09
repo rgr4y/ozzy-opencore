@@ -32,7 +32,8 @@ from .smbios import (
     generate_smbios_data, generate_uuid, generate_mac_address,
     is_placeholder_value, is_placeholder_serial,
     is_placeholder_mlb, is_placeholder_uuid, is_placeholder_rom,
-    validate_and_generate_smbios, get_smbios_info,
+    validate_and_generate_smbios, validate_and_generate_serial_mlb_only, 
+    validate_and_generate_rom_uuid_only, get_smbios_info,
     validate_smbios_format
 )
 

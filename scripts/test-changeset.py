@@ -51,10 +51,15 @@ def test_changeset_parsing(changeset_name):
         result = test_kexts_section(changeset_data['kexts'])
         test_results.append(('kexts', result))
     
-    # Test SMBIOS section
-    if 'smbios' in changeset_data:
+    # Test PlatformInfo section
+    if 'platform_info' in changeset_data and 'generic' in changeset_data['platform_info']:
+        result = test_smbios_section(changeset_data['platform_info']['generic'])
+        test_results.append(('platform_info.generic', result))
+    
+    # Test legacy SMBIOS section
+    elif 'smbios' in changeset_data:
         result = test_smbios_section(changeset_data['smbios'])
-        test_results.append(('smbios', result))
+        test_results.append(('smbios (legacy)', result))
     
     # Test proxmox_vm section
     if 'proxmox_vm' in changeset_data:

@@ -67,7 +67,7 @@ def validate_changeset_structure(changeset_data: Dict[str, Any]) -> Dict[str, Li
     }
     
     # Check for required sections
-    required_sections = ['kexts', 'booter_quirks', 'kernel_quirks']
+    required_sections = ['Kexts', 'BooterQuirks', 'KernelQuirks']
     for section in required_sections:
         if section not in changeset_data:
             issues['warnings'].append(f"Missing recommended section: {section}")
@@ -87,8 +87,27 @@ def validate_changeset_structure(changeset_data: Dict[str, Any]) -> Dict[str, Li
                 if 'exec' not in kext:
                     issues['warnings'].append(f"kext[{i}] missing 'exec' field")
     
-    # Validate SMBIOS section
+    # Validate PlatformInfo section
+    if 'PlatformInfo' in changeset_data:
+        platform_info = changeset_data['PlatformInfo']
+        if not isinstance(platform_info, dict):
+            issues['errors'].append("PlatformInfo section must be a dictionary")
+        elif 'generic' in platform_info:
+            generic = platform_info['generic']
+            if not isinstance(generic, dict):
+                issues['errors'].append("PlatformInfo.generic section must be a dictionary")
+            else:
+                required_generic_fields = [
+                    'SystemProductName', 'SystemSerialNumber', 
+                    'MLB', 'SystemUUID', 'ROM'
+                ]
+                for field in required_generic_fields:
+                    if field not in generic:
+                        issues['warnings'].append(f"PlatformInfo.Generic missing field: {field}")
+
+    # Also check for legacy smbios section for backward compatibility
     if 'smbios' in changeset_data:
+        issues['warnings'].append("Using legacy 'smbios' section. Consider migrating to 'PlatformInfo.generic'")
         smbios = changeset_data['smbios']
         if not isinstance(smbios, dict):
             issues['errors'].append("smbios section must be a dictionary")
@@ -118,7 +137,8 @@ def get_changeset_summary(changeset_data: Dict[str, Any]) -> Dict[str, Any]:
     summary = {
         'sections': list(changeset_data.keys()),
         'kext_count': 0,
-        'has_smbios': False,
+        'has_platform_info': False,
+        'has_smbios': False,  # legacy
         'has_device_properties': False,
         'has_proxmox_config': False,
         'boot_args': None,
@@ -128,6 +148,15 @@ def get_changeset_summary(changeset_data: Dict[str, Any]) -> Dict[str, Any]:
     if 'kexts' in changeset_data and isinstance(changeset_data['kexts'], list):
         summary['kext_count'] = len(changeset_data['kexts'])
     
+    if 'PlatformInfo' in changeset_data:
+        summary['has_platform_info'] = True
+        platform_info = changeset_data['PlatformInfo']
+        if isinstance(platform_info, dict) and 'generic' in platform_info:
+            generic = platform_info['generic']
+            if isinstance(generic, dict):
+                summary['model'] = generic.get('SystemProductName')
+
+    # Legacy smbios support
     if 'smbios' in changeset_data:
         summary['has_smbios'] = True
         smbios = changeset_data['smbios']

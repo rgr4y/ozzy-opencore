@@ -107,20 +107,31 @@ def extract_kernel_patches(config: Dict[str, Any]) -> List[Dict[str, Any]]:
                 patches.append(patch)
     return patches
 
-def extract_smbios(config: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract PlatformInfo.Generic (SMBIOS) data"""
-    smbios = {}
-    if 'PlatformInfo' in config and 'Generic' in config['PlatformInfo']:
-        generic = config['PlatformInfo']['Generic']
-        smbios = {
-            'SystemProductName': generic.get('SystemProductName', ''),
-            'SystemSerialNumber': generic.get('SystemSerialNumber', ''),
-            'MLB': generic.get('MLB', ''),
-            'SystemUUID': generic.get('SystemUUID', ''),
-            'ROM': list(generic.get('ROM', b''))
-        }
-        log("Extracted SMBIOS configuration from source config")
-    return smbios
+def extract_platform_info(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract PlatformInfo data"""
+    platform_info = {}
+    if 'PlatformInfo' in config:
+        platform_config = config['PlatformInfo']
+        if 'Generic' in platform_config:
+            generic = platform_config['Generic']
+            
+            # Handle ROM data conversion to hex format
+            rom_data = generic.get('ROM', b'')
+            if isinstance(rom_data, bytes) and rom_data:
+                # Convert bytes to hex string (uppercase, no separators)
+                rom_hex = rom_data.hex().upper()
+            else:
+                rom_hex = ''
+            
+            platform_info['generic'] = {
+                'SystemProductName': generic.get('SystemProductName', ''),
+                'SystemSerialNumber': generic.get('SystemSerialNumber', ''),
+                'MLB': generic.get('MLB', ''),
+                'SystemUUID': generic.get('SystemUUID', ''),
+                'ROM': rom_hex
+            }
+            log("Extracted PlatformInfo.Generic configuration from source config")
+    return platform_info
 
 def extract_nvram(config: Dict[str, Any]) -> Dict[str, Any]:
     """Extract NVRAM configuration"""
@@ -132,7 +143,7 @@ def extract_nvram(config: Dict[str, Any]) -> Dict[str, Any]:
         if 'Delete' in nvram_config:
             nvram['delete'] = nvram_config['Delete']
         if 'WriteFlash' in nvram_config:
-            nvram['write_flash'] = nvram_config['WriteFlash']
+            nvram['WriteFlash'] = nvram_config['WriteFlash']
     return nvram
 
 def extract_boot_args(config: Dict[str, Any]) -> str:
@@ -150,53 +161,53 @@ def extract_misc_settings(config: Dict[str, Any]) -> Dict[str, Any]:
     if 'Misc' in config:
         misc_config = config['Misc']
         
-        # Security settings - nested under misc_security
+        # Security settings - nested under MiscSecurity
         if 'Security' in misc_config:
             security = misc_config['Security']
-            misc['misc_security'] = {
-                'secureboot_model': security.get('SecureBootModel', 'Default'),
-                'vault': security.get('Vault', 'Optional'),
-                'scan_policy': security.get('ScanPolicy', 0),
-                'allow_set_default': security.get('AllowSetDefault', True),
-                'expose_sensitive_data': security.get('ExposeSensitiveData', 6),
-                'auth_restart': security.get('AuthRestart', False),
-                'blacklist_apple_update': security.get('BlacklistAppleUpdate', True),
-                'dmg_loading': security.get('DmgLoading', 'Signed'),
-                'enable_password': security.get('EnablePassword', False),
-                'halt_level': security.get('HaltLevel', 2147483648)
+            misc['MiscSecurity'] = {
+                'SecureBootModel': security.get('SecureBootModel', 'Default'),
+                'Vault': security.get('Vault', 'Optional'),
+                'ScanPolicy': security.get('ScanPolicy', 0),
+                'AllowSetDefault': security.get('AllowSetDefault', True),
+                'ExposeSensitiveData': security.get('ExposeSensitiveData', 6),
+                'AuthRestart': security.get('AuthRestart', False),
+                'BlacklistAppleUpdate': security.get('BlacklistAppleUpdate', True),
+                'DmgLoading': security.get('DmgLoading', 'Signed'),
+                'EnablePassword': security.get('EnablePassword', False),
+                'HaltLevel': security.get('HaltLevel', 2147483648)
             }
         
-        # Boot settings - nested under misc_boot
+        # Boot settings - nested under MiscBoot
         if 'Boot' in misc_config:
             boot = misc_config['Boot']
-            misc['misc_boot'] = {
-                'timeout': boot.get('Timeout', 5),
-                'picker_mode': boot.get('PickerMode', 'Builtin'),
-                'poll_apple_hot_keys': boot.get('PollAppleHotKeys', False),
-                'show_picker': boot.get('ShowPicker', True),
-                'hide_auxiliary': boot.get('HideAuxiliary', True),
-                'picker_attributes': boot.get('PickerAttributes', 1),
-                'picker_audio_assist': boot.get('PickerAudioAssist', False),
-                'picker_variant': boot.get('PickerVariant', 'Auto'),
-                'console_attributes': boot.get('ConsoleAttributes', 0),
-                'takeoff_delay': boot.get('TakeoffDelay', 0),
-                'hibernate_mode': boot.get('HibernateMode', 'None'),
-                'hibernate_skips_picker': boot.get('HibernateSkipsPicker', False),
-                'instance_identifier': boot.get('InstanceIdentifier', ''),
-                'launcher_option': boot.get('LauncherOption', 'Disabled'),
-                'launcher_path': boot.get('LauncherPath', 'Default')
+            misc['MiscBoot'] = {
+                'Timeout': boot.get('Timeout', 5),
+                'PickerMode': boot.get('PickerMode', 'Builtin'),
+                'PollAppleHotKeys': boot.get('PollAppleHotKeys', False),
+                'ShowPicker': boot.get('ShowPicker', True),
+                'HideAuxiliary': boot.get('HideAuxiliary', True),
+                'PickerAttributes': boot.get('PickerAttributes', 1),
+                'PickerAudioAssist': boot.get('PickerAudioAssist', False),
+                'PickerVariant': boot.get('PickerVariant', 'Auto'),
+                'ConsoleAttributes': boot.get('ConsoleAttributes', 0),
+                'TakeoffDelay': boot.get('TakeoffDelay', 0),
+                'HibernateMode': boot.get('HibernateMode', 'None'),
+                'HibernateSkipsPicker': boot.get('HibernateSkipsPicker', False),
+                'InstanceIdentifier': boot.get('InstanceIdentifier', ''),
+                'LauncherOption': boot.get('LauncherOption', 'Disabled'),
+                'LauncherPath': boot.get('LauncherPath', 'Default')
             }
         
         # BlessOverride settings
         if 'BlessOverride' in misc_config:
             bless_override = misc_config['BlessOverride']
             # Include BlessOverride even if empty array
-            misc['misc_bless_override'] = bless_override
+            misc['MiscBlessOverride'] = bless_override
         
         # Debug settings
         if 'Debug' in misc_config:
             debug = misc_config['Debug']
-            misc['misc_debug'] = {
+            misc['MiscDebug'] = {
                 'Target': debug.get('Target', 0),
                 'AppleDebug': debug.get('AppleDebug', False),
                 'ApplePanic': debug.get('ApplePanic', False),
@@ -210,10 +221,10 @@ def extract_misc_settings(config: Dict[str, Any]) -> Dict[str, Any]:
         # Tools settings
         if 'Tools' in misc_config:
             tools = misc_config['Tools']
-            misc['misc_tools'] = []
+            misc['MiscTools'] = []
             for tool in tools:
                 # Only extract the essential fields to match minimal structure
-                misc['misc_tools'].append({
+                misc['MiscTools'].append({
                     'Name': tool.get('Name', ''),
                     'Path': tool.get('Path', ''),
                     'Enabled': tool.get('Enabled', False)
@@ -222,9 +233,9 @@ def extract_misc_settings(config: Dict[str, Any]) -> Dict[str, Any]:
         # Entries settings
         if 'Entries' in misc_config:
             entries = misc_config['Entries']
-            misc['misc_entries'] = []
+            misc['MiscEntries'] = []
             for entry in entries:
-                misc['misc_entries'].append({
+                misc['MiscEntries'].append({
                     'Name': entry.get('Name', ''),
                     'Path': entry.get('Path', ''),
                     'Enabled': entry.get('Enabled', False),
@@ -238,7 +249,7 @@ def extract_misc_settings(config: Dict[str, Any]) -> Dict[str, Any]:
         # Serial settings
         if 'Serial' in misc_config:
             serial = misc_config['Serial']
-            misc['misc_serial'] = {
+            misc['MiscSerial'] = {
                 'Init': serial.get('Init', False),
                 'Override': serial.get('Override', False)
             }
@@ -254,7 +265,7 @@ def extract_uefi_drivers(config: Dict[str, Any]) -> List[Dict[str, Any]]:
                 drivers.append({
                     'path': driver.get('Path', ''),
                     'enabled': True,
-                    'load_early': driver.get('LoadEarly', False),
+                    'LoadEarly': driver.get('LoadEarly', False),
                     'arguments': driver.get('Arguments', ''),
                     'comment': driver.get('Comment', f"{driver.get('Path', '')} driver")
                 })
@@ -269,7 +280,7 @@ def extract_uefi_settings(config: Dict[str, Any]) -> Dict[str, Any]:
         # Output settings
         if 'Output' in uefi_config:
             output = uefi_config['Output']
-            uefi['uefi_output'] = {
+            uefi['UefiOutput'] = {
                 'Resolution': output.get('Resolution', 'Max'),
                 'UIScale': output.get('UIScale', 0),
                 'TextRenderer': output.get('TextRenderer', 'BuiltinGraphics'),
@@ -293,7 +304,7 @@ def extract_uefi_settings(config: Dict[str, Any]) -> Dict[str, Any]:
         # APFS settings
         if 'APFS' in uefi_config:
             apfs = uefi_config['APFS']
-            uefi['uefi_apfs'] = {
+            uefi['UefiApfs'] = {
                 'EnableJumpstart': apfs.get('EnableJumpstart', True),
                 'GlobalConnect': apfs.get('GlobalConnect', False),
                 'HideVerbose': apfs.get('HideVerbose', True),
@@ -304,12 +315,12 @@ def extract_uefi_settings(config: Dict[str, Any]) -> Dict[str, Any]:
         
         # ConnectDrivers
         if 'ConnectDrivers' in uefi_config:
-            uefi['connect_drivers'] = uefi_config['ConnectDrivers']
+            uefi['ConnectDrivers'] = uefi_config['ConnectDrivers']
         
         # Quirks
         if 'Quirks' in uefi_config:
             quirks = uefi_config['Quirks']
-            uefi['uefi_quirks'] = {
+            uefi['UefiQuirks'] = {
                 'ActivateHpetSupport': quirks.get('ActivateHpetSupport', False),
                 'DisableSecurityPolicy': quirks.get('DisableSecurityPolicy', False),
                 'EnableVectorAcceleration': quirks.get('EnableVectorAcceleration', True),
@@ -367,52 +378,52 @@ def convert_plist_to_changeset(plist_path: Path, output_name: str = "") -> Dict[
     # Extract all components
     acpi_add = extract_acpi_add(config)
     if acpi_add:
-        changeset['acpi_add'] = acpi_add
+        changeset['AcpiAdd'] = acpi_add
         log(f"Found {len(acpi_add)} ACPI files")
     
     kexts = extract_kexts(config)
     if kexts:
-        changeset['kexts'] = kexts
+        changeset['Kexts'] = kexts
         log(f"Found {len(kexts)} kexts")
     
     booter_quirks = extract_booter_quirks(config)
     if booter_quirks:
-        changeset['booter_quirks'] = booter_quirks
+        changeset['BooterQuirks'] = booter_quirks
         log(f"Found {len(booter_quirks)} booter quirks")
     
     kernel_quirks = extract_kernel_quirks(config)
     if kernel_quirks:
-        changeset['kernel_quirks'] = kernel_quirks
+        changeset['KernelQuirks'] = kernel_quirks
         log(f"Found {len(kernel_quirks)} kernel quirks")
     
     kernel_emulate = extract_kernel_emulate(config)
     if kernel_emulate:
-        changeset['kernel_emulate'] = kernel_emulate
+        changeset['KernelEmulate'] = kernel_emulate
         log(f"Found kernel emulation settings")
     
     kernel_patches = extract_kernel_patches(config)
     if kernel_patches:
         # Check if AMD patches are present
         if detect_amd_patches(kernel_patches):
-            changeset['amd_vanilla_patches'] = False
-            log("Detected AMD Vanilla patches - using amd_vanilla_patches flag")
+            changeset['AmdVanillaPatches'] = False
+            log("Detected AMD Vanilla patches - using AmdVanillaPatches flag")
         else:
-            changeset['kernel_patches'] = kernel_patches
+            changeset['KernelPatches'] = kernel_patches
             log(f"Found {len(kernel_patches)} kernel patches")
     
-    smbios = extract_smbios(config)
-    if smbios:
-        changeset['smbios'] = smbios
-        log("Found SMBIOS configuration")
+    platform_info = extract_platform_info(config)
+    if platform_info:
+        changeset['PlatformInfo'] = platform_info
+        log("Found PlatformInfo configuration")
     
     boot_args = extract_boot_args(config)
     if boot_args:
-        changeset['boot_args'] = boot_args
+        changeset['BootArgs'] = boot_args
         log(f"Found boot args: {boot_args}")
     
     nvram = extract_nvram(config)
     if nvram:
-        changeset['nvram'] = nvram
+        changeset['Nvram'] = nvram
         log("Found NVRAM configuration")
     
     misc_settings = extract_misc_settings(config)
@@ -421,7 +432,7 @@ def convert_plist_to_changeset(plist_path: Path, output_name: str = "") -> Dict[
     
     uefi_drivers = extract_uefi_drivers(config)
     if uefi_drivers:
-        changeset['uefi_drivers'] = uefi_drivers
+        changeset['UefiDrivers'] = uefi_drivers
         log(f"Found {len(uefi_drivers)} UEFI drivers")
     
     uefi_settings = extract_uefi_settings(config)
@@ -430,12 +441,12 @@ def convert_plist_to_changeset(plist_path: Path, output_name: str = "") -> Dict[
     
     device_properties = extract_device_properties(config)
     if device_properties:
-        changeset['device_properties'] = device_properties
+        changeset['DeviceProperties'] = device_properties
         log("Found device properties")
     
     acpi_quirks = extract_acpi_quirks(config)
     if acpi_quirks:
-        changeset['acpi_quirks'] = acpi_quirks
+        changeset['AcpiQuirks'] = acpi_quirks
         log(f"Found {len(acpi_quirks)} ACPI quirks")
     
     return changeset

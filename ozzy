@@ -127,6 +127,10 @@ def cmd_generate_serial(args):
         cmd_args.append('--force')
     if getattr(args, 'list', False):
         cmd_args.append('--list')
+    if getattr(args, 'serial_only', False):
+        cmd_args.append('--serial-only')
+    if getattr(args, 'rom_uuid_only', False):
+        cmd_args.append('--rom-uuid-only')
     
     return run_script(script, cmd_args, "Generate serial numbers")
 
@@ -472,6 +476,15 @@ def cmd_list(args):
         warn("No changesets found")
     return True
 
+def cmd_test(args):
+    """Run the test suite"""
+    if not check_python_env():
+        warn("Python environment not ready. Run: ./ozzy setup-env")
+        return False
+    
+    test_runner = ROOT / "tests" / "run-tests.py"
+    return run_script(test_runner, [], "Test suite")
+
 def main():
     parser = argparse.ArgumentParser(
         description='Ozzy - OpenCore Remote Deploy Master Script',
@@ -490,13 +503,14 @@ Workflow Commands (Main Use Cases):
 
 Utility Commands:
   generate-smbios    Generate SMBIOS data for changeset (serial, MLB, UUID, ROM)
-  generate-serial    Generate serial numbers and UUIDs
+  generate-serial    Generate serial numbers and UUIDs (supports --serial-only and --rom-uuid-only)
   read-config        Convert existing config.plist to changeset format
   fetch              Fetch OpenCore assets
   clean              Clean output directories
   setup-env          Set up Python environment
   status             Show project status
   list               List available changesets
+  test               Run integration test suite
 
 Examples:
   ./ozzy full-usb myconfig --output ./usb
@@ -504,6 +518,8 @@ Examples:
   ./ozzy full-deploy myconfig --iso-only --force
   ./ozzy switch testconfig
   ./ozzy generate-serial myconfig --force
+  ./ozzy generate-serial myconfig --serial-only  # Only regenerate serial/MLB
+  ./ozzy generate-serial myconfig --rom-uuid-only  # Only regenerate ROM/UUID
   ./ozzy read-config ./path/to/config.plist --output myconfig.yaml
   ./ozzy apply myconfig && ./ozzy build-iso
         """
@@ -537,6 +553,8 @@ Examples:
     serial_parser.add_argument('changeset', nargs='?', help='Changeset name (without .yaml)')
     serial_parser.add_argument('--force', '-f', action='store_true', help='Force regeneration')
     serial_parser.add_argument('--list', '-l', action='store_true', help='List existing serials')
+    serial_parser.add_argument('--serial-only', '-s', action='store_true', help='Only regenerate serial and MLB')
+    serial_parser.add_argument('--rom-uuid-only', '-r', action='store_true', help='Only regenerate ROM and UUID')
     
     # Config reading command
     read_config_parser = subparsers.add_parser('read-config', help='Convert config.plist to changeset')
@@ -567,6 +585,7 @@ Examples:
     status_parser = subparsers.add_parser('status', help='Show status')
     list_parser = subparsers.add_parser('list', help='List changesets')
     mount_efi_parser = subparsers.add_parser('mount-efi', help='Mount EFI partition from Install USB')
+    test_parser = subparsers.add_parser('test', help='Run integration test suite')
     
     args = parser.parse_args()
     
@@ -592,6 +611,7 @@ Examples:
         'status': cmd_status,
         'list': cmd_list,
         'mount-efi': cmd_mount_efi,
+        'test': cmd_test,
     }
     
     cmd_func = commands.get(args.command)

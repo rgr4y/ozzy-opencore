@@ -161,15 +161,16 @@ uefi_drivers:
 - `load_early`: Load before other drivers
 - `arguments`: Command line arguments for driver
 
-### 11. SMBIOS Information
+### 11. PlatformInfo Information
 
 ```yaml
-smbios:
-  SystemProductName: "MacPro7,1"
-  SystemSerialNumber: "F5KFV03CP7QM"
-  MLB: "F5K124100J9K3F7JA"
-  SystemUUID: "CE35AC97-8B7E-452A-A2AB-A5907F81DA12"
-  ROM: [220, 55, 20, 97, 202, 80]
+platform_info:
+  generic:
+    SystemProductName: "MacPro7,1"
+    SystemSerialNumber: "F5KFV03CP7QM"
+    MLB: "F5K124100J9K3F7JA"
+    SystemUUID: "CE35AC97-8B7E-452A-A2AB-A5907F81DA12"
+    ROM: [220, 55, 20, 97, 202, 80]
 ```
 
 **Purpose**: System identification for macOS compatibility
@@ -179,6 +180,8 @@ smbios:
 - `MLB`: Main Logic Board serial
 - `SystemUUID`: System UUID
 - `ROM`: MAC address as byte array
+
+**Note**: Legacy `smbios` section is still supported for backward compatibility but will show a warning. New changesets should use the `platform_info.generic` structure to match the OpenCore config.plist hierarchy.
 
 ## Hardware-Specific Examples
 

@@ -60,6 +60,84 @@ def copy_acpi_files(acpi_files):
     if copied_count > 0:
         log(f"✓ Copied {copied_count} ACPI file(s)")
 
+def validate_changeset_structure(changeset_data):
+    """Validate changeset structure and check for conflicts"""
+    
+    # Check for duplicate boot-args definitions
+    has_boot_args_top_level = 'boot_args' in changeset_data
+    has_boot_args_nvram = False
+    
+    if 'NVRAM' in changeset_data and 'Add' in changeset_data['NVRAM']:
+        for guid, values in changeset_data['NVRAM']['Add'].items():
+            if isinstance(values, dict) and 'boot-args' in values:
+                has_boot_args_nvram = True
+                break
+    
+    if has_boot_args_top_level and has_boot_args_nvram:
+        error("Changeset contains duplicate boot-args definitions!")
+        error("Found both 'boot_args' at top level and 'boot-args' in NVRAM section.")
+        error("boot-args should only be defined in the NVRAM section.")
+        sys.exit(1)
+    
+    if has_boot_args_top_level:
+        warn("Top-level 'boot_args' is deprecated. Consider moving to NVRAM section as 'boot-args'.")
+
+def apply_platform_info_to_nvram(changeset_data):
+    """Copy PlatformInfo.Generic to NVRAM for Apple ID if enabled"""
+    
+    # Check if the feature is enabled (default: true)
+    copy_to_nvram = changeset_data.get('PlatformInfoGenericCopyToNvramForAppleId', True)
+    
+    if not copy_to_nvram:
+        return changeset_data
+    
+    # Check if PlatformInfo.Generic exists
+    if not ('PlatformInfo' in changeset_data and 'Generic' in changeset_data['PlatformInfo']):
+        return changeset_data
+    
+    log("Copying PlatformInfo.Generic to NVRAM for Apple ID...")
+    
+    platform_info = changeset_data['PlatformInfo']['Generic']
+    
+    # Initialize NVRAM structure if it doesn't exist
+    if 'NVRAM' not in changeset_data:
+        changeset_data['NVRAM'] = {}
+    if 'Add' not in changeset_data['NVRAM']:
+        changeset_data['NVRAM']['Add'] = {}
+    
+    # Apple GUID for identity keys
+    apple_guid = '4D1EDE05-38C7-4A6A-9CC6-4BCCA8B38C14'
+    
+    if apple_guid not in changeset_data['NVRAM']['Add']:
+        changeset_data['NVRAM']['Add'][apple_guid] = {}
+    
+    # Copy relevant fields to NVRAM
+    apple_nvram = changeset_data['NVRAM']['Add'][apple_guid]
+    
+    nvram_fields = ['SystemProductName', 'SystemSerialNumber', 'MLB', 'SystemUUID', 'ROM']
+    for field in nvram_fields:
+        if field in platform_info:
+            if field == 'ROM':
+                # Convert ROM hex string to bytes for NVRAM
+                rom_value = platform_info[field]
+                if isinstance(rom_value, str):
+                    # Convert hex string to bytes
+                    try:
+                        hex_str = rom_value.replace(' ', '')
+                        apple_nvram[field] = bytes.fromhex(hex_str)
+                        log(f"  Copied {field} to NVRAM (converted hex to bytes)")
+                    except ValueError:
+                        apple_nvram[field] = rom_value
+                        log(f"  Copied {field} to NVRAM (kept as string due to conversion error)")
+                else:
+                    apple_nvram[field] = rom_value
+                    log(f"  Copied {field} to NVRAM")
+            else:
+                apple_nvram[field] = platform_info[field]
+                log(f"  Copied {field} to NVRAM")
+    
+    return changeset_data
+
 def changeset_to_operations(changeset_data):
     """Convert changeset data to patch operations for patch-plist.py"""
     operations = []
@@ -112,21 +190,21 @@ def changeset_to_operations(changeset_data):
         })
     
     # Handle booter quirks - merge into Booter.Quirks
-    if 'booter_quirks' in changeset_data:
+    if 'BooterQuirks' in changeset_data:
         operations.append({
             "op": "merge",
             "path": ["Booter", "Quirks"],
-            "entries": changeset_data['booter_quirks']
+            "entries": changeset_data['BooterQuirks']
         })
     
     # Handle kernel quirks - merge into Kernel.Quirks
-    if 'kernel_quirks' in changeset_data:
-        quirks = changeset_data['kernel_quirks'].copy()
+    if 'KernelQuirks' in changeset_data:
+        quirks = changeset_data['KernelQuirks'].copy()
         
         # Check for DummyPowerManagement in quirks and move it to emulate
         if 'DummyPowerManagement' in quirks:
-            print("ERROR: DummyPowerManagement found in kernel_quirks but should be in Kernel.Emulate section!")
-            print("Please move DummyPowerManagement from kernel_quirks to kernel_emulate in your changeset.")
+            print("ERROR: DummyPowerManagement found in KernelQuirks but should be in Kernel.Emulate section!")
+            print("Please move DummyPowerManagement from KernelQuirks to KernelEmulate in your changeset.")
             sys.exit(1)
         
         if quirks:  # Only add operation if there are remaining quirks
@@ -162,13 +240,8 @@ def changeset_to_operations(changeset_data):
             "entries": changeset_data['kernel_emulate']
         })
     
-    # Handle boot args - set NVRAM entry
-    if 'boot_args' in changeset_data:
-        operations.append({
-            "op": "set",
-            "path": ["NVRAM", "Add", "7C436110-AB2A-4BBB-A880-FE41995C9F82", "boot-args"],
-            "value": changeset_data['boot_args']
-        })
+    # Note: boot-args should only be defined in NVRAM section, not as top-level boot_args
+    # This is validated in validate_changeset_structure()
     
     # Handle CSR config - set NVRAM entry
     if 'csr_active_config' in changeset_data:
@@ -186,17 +259,19 @@ def changeset_to_operations(changeset_data):
             "value": csr_bytes
         })
     
-    # Handle SMBIOS - merge into PlatformInfo.Generic
-    if 'smbios' in changeset_data:
+    # Handle PlatformInfo - merge into PlatformInfo.Generic
+    if 'PlatformInfo' in changeset_data and 'Generic' in changeset_data['PlatformInfo']:
+        # Convert data values (e.g., hex ROM to bytes)
+        converted_generic = convert_data_values(changeset_data['PlatformInfo']['Generic'])
         operations.append({
             "op": "merge",
             "path": ["PlatformInfo", "Generic"],
-            "entries": changeset_data['smbios']
+            "entries": converted_generic
         })
     
     # Handle ACPI add - append to ACPI.Add
-    if 'acpi_add' in changeset_data:
-        for acpi_file in changeset_data['acpi_add']:
+    if 'AcpiAdd' in changeset_data:
+        for acpi_file in changeset_data['AcpiAdd']:
             # First, remove any existing entry with the same Path
             operations.append({
                 "op": "remove",
@@ -227,12 +302,12 @@ def changeset_to_operations(changeset_data):
         })
     
     # Handle UEFI drivers - append to UEFI.Drivers
-    if 'uefi_drivers' in changeset_data:
-        for driver in changeset_data['uefi_drivers']:
+    if 'UefiDrivers' in changeset_data:
+        for driver in changeset_data['UefiDrivers']:
             driver_entry = {
                 "Path": driver['path'],
                 "Enabled": driver.get('enabled', True),
-                "LoadEarly": driver.get('load_early', False)
+                "LoadEarly": driver.get('LoadEarly', False)
             }
             if 'arguments' in driver:
                 driver_entry["Arguments"] = driver['arguments']
@@ -325,12 +400,12 @@ def changeset_to_operations(changeset_data):
             })
     
     # Handle NVRAM settings
-    if 'nvram' in changeset_data:
-        nvram_data = changeset_data['nvram']
+    if 'NVRAM' in changeset_data:
+        nvram_data = changeset_data['NVRAM']
         
         # Handle NVRAM Add section
-        if 'add' in nvram_data:
-            for guid, variables in nvram_data['add'].items():
+        if 'Add' in nvram_data:
+            for guid, variables in nvram_data['Add'].items():
                 for var_name, var_value in variables.items():
                     operations.append({
                         "op": "set",
@@ -339,8 +414,8 @@ def changeset_to_operations(changeset_data):
                     })
         
         # Handle NVRAM Delete section
-        if 'delete' in nvram_data:
-            for guid, variables in nvram_data['delete'].items():
+        if 'Delete' in nvram_data:
+            for guid, variables in nvram_data['Delete'].items():
                 if isinstance(variables, list):
                     # Set the delete array for this GUID
                     operations.append({
@@ -349,12 +424,18 @@ def changeset_to_operations(changeset_data):
                         "value": variables
                     })
         
-        # Handle WriteFlash setting
-        if 'write_flash' in nvram_data:
+        # Handle WriteFlash setting (case-insensitive)
+        writeflash_value = None
+        for key in nvram_data.keys():
+            if key.lower() == 'writeflash':
+                writeflash_value = nvram_data[key]
+                break
+        
+        if writeflash_value is not None:
             operations.append({
                 "op": "set", 
                 "path": ["NVRAM", "WriteFlash"],
-                "value": nvram_data['write_flash']
+                "value": writeflash_value
             })
     
     # Handle nested misc_boot settings - set Misc.Boot options
@@ -470,9 +551,9 @@ def changeset_to_operations(changeset_data):
             "value": changeset_data['halt_level']
         })
     
-    # Handle Misc Tools
-    if 'misc_tools' in changeset_data:
-        tools_list = changeset_data['misc_tools']
+    # Handle Misc Tools (TitleCase format)
+    if 'MiscTools' in changeset_data:
+        tools_list = changeset_data['MiscTools']
         
         # Only set Tools if there are actual tools to add
         if tools_list:
@@ -502,13 +583,13 @@ def changeset_to_operations(changeset_data):
             })
         # If tools_list is empty, don't set anything - let template handle it
     
-    # Handle Misc Entries (only if there are actual entries)
-    if 'misc_entries' in changeset_data and changeset_data['misc_entries']:
+    # Handle Misc Entries (TitleCase format - only if there are actual entries)
+    if 'MiscEntries' in changeset_data and changeset_data['MiscEntries']:
         # Replace the entire Entries array only if there are actual entries
         operations.append({
             "op": "set",
             "path": ["Misc", "Entries"],
-            "value": changeset_data['misc_entries']
+            "value": changeset_data['MiscEntries']
         })
     # If empty entries, don't set anything - let template default handle it
     
@@ -574,7 +655,38 @@ def post_process_config(config_path):
     """Fix binary data formats and remove warnings"""
     import subprocess
     import plistlib
+    import re
     from datetime import datetime
+    
+    def format_short_data_tags(xml_content, max_length=20):
+        """Format short base64 data tags to be on a single line."""
+        # Pattern 1: Match <data> tags with content spread across lines
+        pattern1 = r'<data>\s*\n\s*([A-Za-z0-9+/=]+)\s*\n\s*</data>'
+        
+        # Pattern 2: Match empty <data> tags spread across lines
+        pattern2 = r'<data>\s*\n\s*</data>'
+        
+        def replace_data_tag(match):
+            base64_content = match.group(1).strip()
+            
+            # Only format short base64 strings as single line
+            if len(base64_content) <= max_length:
+                return f'<data>{base64_content}</data>'
+            else:
+                # Keep longer data on multiple lines with proper indentation
+                return match.group(0)
+        
+        # First handle non-empty data tags
+        formatted_content = re.sub(pattern1, replace_data_tag, xml_content)
+        
+        # Then handle empty data tags
+        formatted_content = re.sub(pattern2, '<data></data>', formatted_content)
+        
+        return formatted_content
+    
+    def convert_tabs_to_spaces(xml_content, spaces=2):
+        """Convert tabs to spaces in XML content."""
+        return xml_content.replace('\t', ' ' * spaces)
     
     # Load the config
     with open(config_path, 'rb') as f:
@@ -671,6 +783,16 @@ def post_process_config(config_path):
     # Save the updated config
     with open(config_path, 'wb') as f:
         plistlib.dump(config, f)
+    
+    # Format short data tags to be on single lines
+    with open(config_path, 'r') as f:
+        xml_content = f.read()
+
+    formatted_content = format_short_data_tags(xml_content)
+    formatted_content = convert_tabs_to_spaces(formatted_content, spaces=2)
+
+    with open(config_path, 'w') as f:
+        f.write(formatted_content)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -696,6 +818,12 @@ def main():
     except Exception as e:
         error(f"Failed to load changeset: {e}")
         return 1
+    
+    # Validate changeset structure
+    validate_changeset_structure(changeset_data)
+    
+    # Apply platform_info to NVRAM if enabled
+    changeset_data = apply_platform_info_to_nvram(changeset_data)
     
     # Copy ACPI files if specified in changeset
     if 'acpi_add' in changeset_data:
@@ -737,17 +865,6 @@ def main():
     
     if not amd_enabled:
         log("No AMD patches detected or enabled in changeset")
-    
-    # Validate and generate SMBIOS data if needed
-    if 'smbios' in changeset_data:
-        from lib.smbios import validate_and_generate_smbios
-        log("Validating SMBIOS data...")
-        if validate_and_generate_smbios(changeset_data, force=False):
-            log("SMBIOS validation completed")
-        else:
-            warn("SMBIOS validation failed, continuing with existing values")
-    else:
-        warn("No SMBIOS section found in changeset")
     
     # Convert changeset to patch operations
     log("Converting changeset to patch operations")

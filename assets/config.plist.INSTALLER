@@ -486,7 +486,7 @@
           <key>SystemAudioVolume</key>
           <data>Rg==</data>
           <key>boot-args</key>
-          <string>keepsyms=1 debug=0x100 -v darkwake=0</string>
+          <string>keepsyms=1 debug=0x100 -v</string>
           <key>csr-active-config</key>
           <data>AAAAAA==</data>
           <key>prev-lang:kbd</key>
@@ -559,13 +559,13 @@
         <key>AdviseFeatures</key>
         <false/>
         <key>MLB</key>
-        <string>C02921609CDJG36AD</string>
+        <string>C02035270GUJG36FB</string>
         <key>MaxBIOSVersion</key>
         <false/>
         <key>ProcessorType</key>
         <integer>0</integer>
         <key>ROM</key>
-        <data>iI4cQZTM</data>
+        <data>ABEkKQui</data>
         <key>SpoofVendor</key>
         <true/>
         <key>SystemMemoryStatus</key>
@@ -573,9 +573,9 @@
         <key>SystemProductName</key>
         <string>iMacPro1,1</string>
         <key>SystemSerialNumber</key>
-        <string>C02YR04NHX87</string>
+        <string>C02D9EZCHX87</string>
         <key>SystemUUID</key>
-        <string>251FAEFB-9179-4672-A2D2-3C7AECEB8F55</string>
+        <string>1FE957FF-35C0-5796-9509-640A97C08985</string>
       </dict>
       <key>UpdateDataHub</key>
       <true/>
