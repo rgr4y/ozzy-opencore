@@ -168,7 +168,7 @@ def cmd_full_usb(args):
     return run_workflow(workflow, cmd_args, "Full USB workflow")
 
 def cmd_full_deploy(args):
-    """Full deploy workflow: changeset → ISO → Proxmox"""
+    """Full deploy workflow: changeset → IMG/ISO → Proxmox"""
     if not check_python_env():
         warn("Python environment not ready. Run: ./ozzy setup-env")
         return False
@@ -176,6 +176,10 @@ def cmd_full_deploy(args):
     # Validate argument combinations
     if getattr(args, 'iso_only', False) and getattr(args, 'force', False):
         error("Cannot use --iso-only and --force together. --iso-only skips the apply step, making --force redundant.")
+        return False
+    
+    if getattr(args, 'build_only', False) and getattr(args, 'force', False):
+        error("Cannot use --build-only and --force together. --build-only skips the apply step, making --force redundant.")
         return False
     
     workflow = ROOT / "workflows" / "full-deploy.py"
@@ -188,6 +192,8 @@ def cmd_full_deploy(args):
         cmd_args.append('--build-only')
     if getattr(args, 'iso_only', False):
         cmd_args.append('--iso-only')
+    if getattr(args, 'iso', False):
+        cmd_args.append('--iso')
     return run_workflow(workflow, cmd_args, "Full deploy workflow")
 
 def cmd_switch(args):
@@ -498,7 +504,7 @@ Core Commands:
 
 Workflow Commands (Main Use Cases):
   full-usb           Changeset → ISO → USB in one command
-  full-deploy        Changeset → ISO → Proxmox in one command
+  full-deploy        Changeset → IMG → Proxmox in one command
   switch             Switch to different changeset for testing
 
 Utility Commands:
@@ -515,7 +521,8 @@ Utility Commands:
 Examples:
   ./ozzy full-usb myconfig --output ./usb
   ./ozzy full-deploy myconfig --force
-  ./ozzy full-deploy myconfig --iso-only --force
+  ./ozzy full-deploy myconfig --build-only
+  ./ozzy full-deploy myconfig --iso
   ./ozzy switch testconfig
   ./ozzy generate-serial myconfig --force
   ./ozzy generate-serial myconfig --serial-only  # Only regenerate serial/MLB
@@ -568,11 +575,12 @@ Examples:
     full_usb_parser.add_argument('--force', '-f', action='store_true', help='Force rebuild')
     full_usb_parser.add_argument('--eject', action='store_true', help='Automatically eject EFI and Install volumes')
     
-    full_deploy_parser = subparsers.add_parser('full-deploy', help='Full deploy workflow')
+    full_deploy_parser = subparsers.add_parser('full-deploy', help='Build IMG and deploy to Proxmox VM')
     full_deploy_parser.add_argument('changeset', help='Changeset name (without .yaml)')
     full_deploy_parser.add_argument('--force', '-f', action='store_true', help='Force rebuild')
-    full_deploy_parser.add_argument('--build-only', '-b', action='store_true', help='Build only')
-    full_deploy_parser.add_argument('--iso-only', '-i', action='store_true', help='Skip fetch/apply/validation, build ISO and deploy only')
+    full_deploy_parser.add_argument('--build-only', '-b', action='store_true', help='Build only, do not deploy')
+    full_deploy_parser.add_argument('--iso-only', '-i', action='store_true', help='Skip fetch/apply/validation, build ISO and deploy')
+    full_deploy_parser.add_argument('--iso', action='store_true', help='Build ISO instead of IMG (default is IMG)')
     
     switch_parser = subparsers.add_parser('switch', help='Switch changeset')
     switch_parser.add_argument('changeset', help='Changeset name (without .yaml)')

@@ -77,10 +77,12 @@ def run_legacy(cmd: str):
 def get_remote_config():
     """Get remote connection configuration"""
     return {
-        'host': os.getenv('PROXMOX_HOST', '10.0.1.10'),
-        'user': os.getenv('PROXMOX_USER', 'root'),
-        'vmid': os.getenv('PROXMOX_VMID', '100'),
-        'workdir': os.getenv('PROXMOX_WORKDIR', '/root/workspace')
+        'host': os.getenv('PROXMOX_HOST', os.getenv('REMOTE_SSH_HOST', '10.0.1.10').replace('root@', '')),
+        'user': 'root',  # Always root for Proxmox
+        'vmid': os.getenv('PROXMOX_VMID', os.getenv('REMOTE_VM_ID', '100')),
+        'workdir': os.getenv('PROXMOX_WORKDIR', os.getenv('REMOTE_WORKDIR', '/root/workspace')),
+        'remote_iso_dir': os.getenv('REMOTE_ISO_DIR', '/var/lib/vz/template/iso'),
+        'remote_img_dir': os.getenv('REMOTE_IMG_DIR', '/var/lib/vz/images')
     }
 
 def scp(local: Path, remote: str):
