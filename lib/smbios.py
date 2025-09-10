@@ -201,7 +201,7 @@ def _validate_and_generate_smbios_selective(
         if update_uuid: fields.append("UUID")
         if update_rom: fields.append("ROM")
         log(f"{' and '.join(fields)} appear to be real (not placeholder)")
-        error(f"No changes made. Use --force to regenerate {' and '.join(fields)} anyway")
+        warn(f"No changes made. Use --force to regenerate {' and '.join(fields)} anyway")
         return False
     
     # Only check macserial if we need to generate serial/MLB

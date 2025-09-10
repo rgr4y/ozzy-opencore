@@ -43,7 +43,7 @@ def manage_changeset_kexts(changeset_name, target_efi_dir):
         error(f"Failed to load changeset: {e}")
         return False
     
-    if 'kexts' not in changeset_data:
+    if 'Kexts' not in changeset_data:
         log("No kexts specified in changeset")
         return True
     
@@ -55,7 +55,7 @@ def manage_changeset_kexts(changeset_name, target_efi_dir):
     
     # Get list of kexts specified in changeset
     changeset_kexts = set()
-    for kext_info in changeset_data['kexts']:
+    for kext_info in changeset_data['Kexts']:
         changeset_kexts.add(kext_info['bundle'])
     
     log(f"Changeset specifies {len(changeset_kexts)} kexts")
@@ -111,11 +111,11 @@ def manage_changeset_drivers(changeset_name, target_efi_dir):
     drivers_dir.mkdir(parents=True, exist_ok=True)
     
     # Copy drivers specified in changeset
-    if 'uefi_drivers' in changeset_data:
+    if 'UefiDrivers' in changeset_data:
         log(f"Copying drivers specified in changeset...")
         copied_count = 0
         
-        for driver in changeset_data['uefi_drivers']:
+        for driver in changeset_data['UefiDrivers']:
             driver_name = driver['path']
             
             # Skip if already exists (e.g. essential drivers)

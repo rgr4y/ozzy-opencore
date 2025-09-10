@@ -28,7 +28,7 @@ TEMPLATE_PLIST = ROOT / "assets" / "config.plist.TEMPLATE"
 PATCHER = ROOT / "scripts" / "patch-plist.py"
 
 def copy_acpi_files(acpi_files):
-    """Copy ACPI .aml files from OpenCore samples to the ACPI directory"""
+    """Copy ACPI .aml files from OpenCore samples or assets directory to the ACPI directory"""
     if not acpi_files:
         return
         
@@ -36,26 +36,35 @@ def copy_acpi_files(acpi_files):
     opencore_path = ROOT / "out" / "opencore"
     acpi_samples_dir = opencore_path / "Docs" / "AcpiSamples" / "Binaries"
     
-    if not acpi_samples_dir.exists():
-        warn(f"ACPI samples directory not found: {acpi_samples_dir}")
-        return
-    
     # Ensure ACPI directory exists
     acpi_target_dir = EFI / "ACPI"
     acpi_target_dir.mkdir(parents=True, exist_ok=True)
     
     copied_count = 0
     for acpi_file in acpi_files:
-        source_file = acpi_samples_dir / acpi_file
+        # Check multiple locations for ACPI files, in order of preference:
+        # 1. OpenCore samples (first priority)
+        # 2. Assets directory (second priority)
+        source_locations = [
+            acpi_samples_dir / acpi_file,
+            ROOT / "assets" / acpi_file
+        ]
+        
+        source_file = None
+        for location in source_locations:
+            if location.exists():
+                source_file = location
+                break
+        
         target_file = acpi_target_dir / acpi_file
         
-        if source_file.exists():
+        if source_file:
             import shutil
             shutil.copy2(source_file, target_file)
             copied_count += 1
-            log(f"✓ Copied ACPI file: {acpi_file}")
+            log(f"✓ Copied ACPI file: {acpi_file} (from {source_file.parent.name})")
         else:
-            warn(f"ACPI file not found in samples: {acpi_file}")
+            warn(f"ACPI file not found: {acpi_file} (searched in OpenCore samples and assets)")
     
     if copied_count > 0:
         log(f"✓ Copied {copied_count} ACPI file(s)")
@@ -64,19 +73,21 @@ def validate_changeset_structure(changeset_data):
     """Validate changeset structure and check for conflicts"""
     
     # Check for duplicate boot-args definitions
-    has_boot_args_top_level = 'boot_args' in changeset_data
+    has_boot_args_top_level = 'boot_args' in changeset_data or 'BootArgs' in changeset_data
     has_boot_args_nvram = False
     
-    if 'NVRAM' in changeset_data and 'Add' in changeset_data['NVRAM']:
-        for guid, values in changeset_data['NVRAM']['Add'].items():
-            if isinstance(values, dict) and 'boot-args' in values:
-                has_boot_args_nvram = True
-                break
+    if 'NVRAM' in changeset_data:
+        nvram_add = changeset_data['NVRAM'].get('Add') or changeset_data['NVRAM'].get('add')
+        if nvram_add:
+            for guid, values in nvram_add.items():
+                if isinstance(values, dict) and 'boot-args' in values:
+                    has_boot_args_nvram = True
+                    break
     
     if has_boot_args_top_level and has_boot_args_nvram:
         error("Changeset contains duplicate boot-args definitions!")
-        error("Found both 'boot_args' at top level and 'boot-args' in NVRAM section.")
-        error("boot-args should only be defined in the NVRAM section.")
+        error("Found both top-level 'BootArgs'/'boot_args' and 'boot-args' in NVRAM section.")
+        error("Please use only one format - preferably in NVRAM section.")
         sys.exit(1)
     
     if has_boot_args_top_level:
@@ -163,9 +174,10 @@ def changeset_to_operations(changeset_data):
         return patches
     
     # Handle kexts - replace entire Kernel.Add list
-    if 'kexts' in changeset_data:
+    kexts = changeset_data.get('Kexts', changeset_data.get('kexts'))
+    if kexts:
         kext_entries = []
-        for kext in changeset_data['kexts']:
+        for kext in kexts:
             # Set ExecutablePath - empty string if no exec, otherwise Contents/MacOS/exec
             exec_path = ""
             if kext.get('exec') and kext['exec'].strip():
@@ -215,44 +227,68 @@ def changeset_to_operations(changeset_data):
             })
     
     # Handle kernel emulate settings - merge into Kernel.Emulate
-    if 'kernel_emulate' in changeset_data:
+    kernel_emulate = changeset_data.get('KernelEmulate', changeset_data.get('kernel_emulate'))
+    if kernel_emulate:
         operations.append({
             "op": "merge",
             "path": ["Kernel", "Emulate"],
-            "entries": changeset_data['kernel_emulate']
+            "entries": kernel_emulate
         })
     
     # Handle kernel patches - set Kernel.Patch
-    if 'kernel_patches' in changeset_data:
+    kernel_patches = changeset_data.get('KernelPatches', changeset_data.get('kernel_patches'))
+    if kernel_patches:
         # Ensure all binary fields are properly formatted as bytes
-        patches = ensure_bytes_for_kernel_patches(changeset_data['kernel_patches'])
+        patches = ensure_bytes_for_kernel_patches(kernel_patches)
         operations.append({
             "op": "set",
             "path": ["Kernel", "Patch"],
             "value": patches
         })
     
-    # Handle kernel emulate - set Kernel.Emulate
-    if 'kernel_emulate' in changeset_data:
+    # Handle boot-args - can be defined as top-level BootArgs/boot_args OR in NVRAM section
+    # Check for both formats and ensure only one is used
+    top_level_boot_args = changeset_data.get('BootArgs', changeset_data.get('boot_args'))
+    nvram_boot_args = None
+    
+    # Check if boot-args exists in NVRAM section (handle both Add and add)
+    if 'NVRAM' in changeset_data:
+        nvram_add = changeset_data['NVRAM'].get('Add') or changeset_data['NVRAM'].get('add')
+        if nvram_add:
+            for guid, variables in nvram_add.items():
+                if isinstance(variables, dict) and 'boot-args' in variables:
+                    nvram_boot_args = variables['boot-args']
+                    break
+    
+    # Validate that only one format is used
+    if top_level_boot_args and nvram_boot_args:
+        error("Changeset contains duplicate boot-args definitions!")
+        error("Found both top-level 'BootArgs'/'boot_args' and 'boot-args' in NVRAM section.")
+        error("Please use only one format - preferably in NVRAM section.")
+        sys.exit(1)
+    
+    # Process boot-args (convert top-level to NVRAM format if needed)
+    final_boot_args = top_level_boot_args or nvram_boot_args
+    if final_boot_args:
+        if top_level_boot_args:
+            log("Converting top-level BootArgs to NVRAM boot-args format")
+        
         operations.append({
-            "op": "merge",
-            "path": ["Kernel", "Emulate"],
-            "entries": changeset_data['kernel_emulate']
+            "op": "set",
+            "path": ["NVRAM", "Add", "7C436110-AB2A-4BBB-A880-FE41995C9F82", "boot-args"],
+            "value": final_boot_args
         })
-    
-    # Note: boot-args should only be defined in NVRAM section, not as top-level boot_args
-    # This is validated in validate_changeset_structure()
-    
+
     # Handle CSR config - set NVRAM entry
-    if 'csr_active_config' in changeset_data:
+    csr_config = changeset_data.get('CsrActiveConfig', changeset_data.get('csr_active_config'))
+    if csr_config:
         # Convert hex string to bytes
-        csr_hex = changeset_data['csr_active_config']
-        if isinstance(csr_hex, str):
+        if isinstance(csr_config, str):
             # Remove any spaces and convert pairs of hex chars to bytes
-            csr_clean = csr_hex.replace(' ', '')
+            csr_clean = csr_config.replace(' ', '')
             csr_bytes = [int(csr_clean[i:i+2], 16) for i in range(0, len(csr_clean), 2)]
         else:
-            csr_bytes = csr_hex
+            csr_bytes = csr_config
         operations.append({
             "op": "set", 
             "path": ["NVRAM", "Add", "7C436110-AB2A-4BBB-A880-FE41995C9F82", "csr-active-config"],
@@ -294,11 +330,12 @@ def changeset_to_operations(changeset_data):
             })
     
     # Handle ACPI quirks - merge into ACPI.Quirks
-    if 'acpi_quirks' in changeset_data:
+    acpi_quirks = changeset_data.get('AcpiQuirks', changeset_data.get('acpi_quirks'))
+    if acpi_quirks:
         operations.append({
             "op": "merge",
             "path": ["ACPI", "Quirks"],
-            "entries": changeset_data['acpi_quirks']
+            "entries": acpi_quirks
         })
     
     # Handle UEFI drivers - append to UEFI.Drivers
@@ -319,8 +356,9 @@ def changeset_to_operations(changeset_data):
             })
     
     # Handle tools - remove existing then append to Misc.Tools
-    if 'tools' in changeset_data:
-        for tool in changeset_data['tools']:
+    tools = changeset_data.get('MiscTools', changeset_data.get('tools'))
+    if tools:
+        for tool in tools:
             # First remove any existing tool with the same name
             operations.append({
                 "op": "remove",
@@ -350,39 +388,43 @@ def changeset_to_operations(changeset_data):
             })
     
     # Handle device properties - set to replace template samples with changeset properties
-    if 'device_properties' in changeset_data:
+    device_props = changeset_data.get('DeviceProperties', changeset_data.get('device_properties'))
+    if device_props:
         operations.append({
             "op": "set",
             "path": ["DeviceProperties", "Add"],
-            "value": changeset_data['device_properties']
+            "value": device_props
         })
     
     # Handle security settings
-    if 'secureboot_model' in changeset_data:
+    secureboot_model = changeset_data.get('SecureBootModel', changeset_data.get('secureboot_model'))
+    if secureboot_model:
         operations.append({
             "op": "set",
             "path": ["Misc", "Security", "SecureBootModel"],
-            "value": changeset_data['secureboot_model']
+            "value": secureboot_model
         })
     
-    if 'vault' in changeset_data:
+    vault = changeset_data.get('Vault', changeset_data.get('vault'))
+    if vault:
         operations.append({
             "op": "set",
             "path": ["Misc", "Security", "Vault"],
-            "value": changeset_data['vault']
+            "value": vault
         })
     
-    if 'scan_policy' in changeset_data:
+    scan_policy = changeset_data.get('ScanPolicy', changeset_data.get('scan_policy'))
+    if scan_policy:
         operations.append({
             "op": "set",
             "path": ["Misc", "Security", "ScanPolicy"],
-            "value": changeset_data['scan_policy']
+            "value": scan_policy
         })
     
     # Handle misc_debug settings - set Misc.Debug options
-    if 'misc_debug' in changeset_data:
-        debug_settings = changeset_data['misc_debug']
-        for setting, value in debug_settings.items():
+    misc_debug = changeset_data.get('MiscDebug', changeset_data.get('misc_debug'))
+    if misc_debug:
+        for setting, value in misc_debug.items():
             operations.append({
                 "op": "set",
                 "path": ["Misc", "Debug", setting],
@@ -390,9 +432,9 @@ def changeset_to_operations(changeset_data):
             })
     
     # Handle misc_serial settings - set Misc.Serial options
-    if 'misc_serial' in changeset_data:
-        serial_settings = changeset_data['misc_serial']
-        for setting, value in serial_settings.items():
+    misc_serial = changeset_data.get('MiscSerial', changeset_data.get('misc_serial'))
+    if misc_serial:
+        for setting, value in misc_serial.items():
             operations.append({
                 "op": "set",
                 "path": ["Misc", "Serial", setting],
@@ -407,6 +449,9 @@ def changeset_to_operations(changeset_data):
         if 'Add' in nvram_data:
             for guid, variables in nvram_data['Add'].items():
                 for var_name, var_value in variables.items():
+                    # Skip boot-args as it's handled separately above
+                    if var_name == 'boot-args':
+                        continue
                     operations.append({
                         "op": "set",
                         "path": ["NVRAM", "Add", guid, var_name],
@@ -439,8 +484,8 @@ def changeset_to_operations(changeset_data):
             })
     
     # Handle nested misc_boot settings - set Misc.Boot options
-    if 'misc_boot' in changeset_data:
-        boot_settings = changeset_data['misc_boot']
+    misc_boot = changeset_data.get('MiscBoot', changeset_data.get('misc_boot'))
+    if misc_boot:
         # Map snake_case to correct OpenCore PascalCase
         boot_key_mapping = {
             'timeout': 'Timeout',
@@ -460,7 +505,7 @@ def changeset_to_operations(changeset_data):
             'launcher_path': 'LauncherPath'
         }
         
-        for setting, value in boot_settings.items():
+        for setting, value in misc_boot.items():
             plist_key = boot_key_mapping.get(setting, setting)
             operations.append({
                 "op": "set",
@@ -469,16 +514,17 @@ def changeset_to_operations(changeset_data):
             })
     
     # Handle BlessOverride setting - set Misc.BlessOverride (only if not empty)
-    if 'misc_bless_override' in changeset_data and changeset_data['misc_bless_override']:
+    misc_bless_override = changeset_data.get('MiscBlessOverride', changeset_data.get('misc_bless_override'))
+    if misc_bless_override:
         operations.append({
             "op": "set",
             "path": ["Misc", "BlessOverride"],
-            "value": changeset_data['misc_bless_override']
+            "value": misc_bless_override
         })
     
     # Handle nested misc_security settings - set Misc.Security options
-    if 'misc_security' in changeset_data:
-        security_settings = changeset_data['misc_security']
+    misc_security = changeset_data.get('MiscSecurity', changeset_data.get('misc_security'))
+    if misc_security:
         # Map snake_case to correct OpenCore PascalCase
         security_key_mapping = {
             'secureboot_model': 'SecureBootModel',
@@ -493,7 +539,7 @@ def changeset_to_operations(changeset_data):
             'halt_level': 'HaltLevel'
         }
         
-        for setting, value in security_settings.items():
+        for setting, value in misc_security.items():
             plist_key = security_key_mapping.get(setting, setting)
             operations.append({
                 "op": "set",
@@ -502,53 +548,60 @@ def changeset_to_operations(changeset_data):
             })
     
     # Handle additional Security settings (legacy support)
-    if 'allow_set_default' in changeset_data:
+    allow_set_default = changeset_data.get('AllowSetDefault', changeset_data.get('allow_set_default'))
+    if allow_set_default is not None:
         operations.append({
             "op": "set",
             "path": ["Misc", "Security", "AllowSetDefault"],
-            "value": changeset_data['allow_set_default']
+            "value": allow_set_default
         })
     
-    if 'expose_sensitive_data' in changeset_data:
+    expose_sensitive_data = changeset_data.get('ExposeSensitiveData', changeset_data.get('expose_sensitive_data'))
+    if expose_sensitive_data is not None:
         operations.append({
             "op": "set",
             "path": ["Misc", "Security", "ExposeSensitiveData"],
-            "value": changeset_data['expose_sensitive_data']
+            "value": expose_sensitive_data
         })
     
-    if 'auth_restart' in changeset_data:
+    auth_restart = changeset_data.get('AuthRestart', changeset_data.get('auth_restart'))
+    if auth_restart is not None:
         operations.append({
             "op": "set",
             "path": ["Misc", "Security", "AuthRestart"],
-            "value": changeset_data['auth_restart']
+            "value": auth_restart
         })
     
-    if 'blacklist_apple_update' in changeset_data:
+    blacklist_apple_update = changeset_data.get('BlacklistAppleUpdate', changeset_data.get('blacklist_apple_update'))
+    if blacklist_apple_update is not None:
         operations.append({
             "op": "set",
             "path": ["Misc", "Security", "BlacklistAppleUpdate"],
-            "value": changeset_data['blacklist_apple_update']
+            "value": blacklist_apple_update
         })
     
-    if 'dmg_loading' in changeset_data:
+    dmg_loading = changeset_data.get('DmgLoading', changeset_data.get('dmg_loading'))
+    if dmg_loading is not None:
         operations.append({
             "op": "set",
             "path": ["Misc", "Security", "DmgLoading"],
-            "value": changeset_data['dmg_loading']
+            "value": dmg_loading
         })
     
-    if 'enable_password' in changeset_data:
+    enable_password = changeset_data.get('EnablePassword', changeset_data.get('enable_password'))
+    if enable_password is not None:
         operations.append({
             "op": "set",
             "path": ["Misc", "Security", "EnablePassword"],
-            "value": changeset_data['enable_password']
+            "value": enable_password
         })
     
-    if 'halt_level' in changeset_data:
+    halt_level = changeset_data.get('HaltLevel', changeset_data.get('halt_level'))
+    if halt_level is not None:
         operations.append({
             "op": "set",
             "path": ["Misc", "Security", "HaltLevel"],
-            "value": changeset_data['halt_level']
+            "value": halt_level
         })
     
     # Handle Misc Tools (TitleCase format)
@@ -594,8 +647,8 @@ def changeset_to_operations(changeset_data):
     # If empty entries, don't set anything - let template default handle it
     
     # Handle UEFI Output settings
-    if 'uefi_output' in changeset_data:
-        uefi_output = changeset_data['uefi_output']
+    uefi_output = changeset_data.get('UefiOutput', changeset_data.get('uefi_output'))
+    if uefi_output:
         for setting, value in uefi_output.items():
             operations.append({
                 "op": "set",
@@ -604,8 +657,8 @@ def changeset_to_operations(changeset_data):
             })
     
     # Handle UEFI APFS settings
-    if 'uefi_apfs' in changeset_data:
-        uefi_apfs = changeset_data['uefi_apfs']
+    uefi_apfs = changeset_data.get('UefiApfs', changeset_data.get('uefi_apfs'))
+    if uefi_apfs:
         for setting, value in uefi_apfs.items():
             operations.append({
                 "op": "set",
@@ -614,8 +667,8 @@ def changeset_to_operations(changeset_data):
             })
     
     # Handle UEFI Quirks
-    if 'uefi_quirks' in changeset_data:
-        uefi_quirks = changeset_data['uefi_quirks']
+    uefi_quirks = changeset_data.get('UefiQuirks', changeset_data.get('uefi_quirks'))
+    if uefi_quirks:
         for setting, value in uefi_quirks.items():
             operations.append({
                 "op": "set",
@@ -624,16 +677,17 @@ def changeset_to_operations(changeset_data):
             })
     
     # Handle ConnectDrivers
-    if 'connect_drivers' in changeset_data:
+    connect_drivers = changeset_data.get('ConnectDrivers', changeset_data.get('connect_drivers'))
+    if connect_drivers is not None:
         operations.append({
             "op": "set",
             "path": ["UEFI", "ConnectDrivers"],
-            "value": changeset_data['connect_drivers']
+            "value": connect_drivers
         })
     
     # Handle Protocol Overrides
-    if 'protocol_overrides' in changeset_data:
-        protocol_overrides = changeset_data['protocol_overrides']
+    protocol_overrides = changeset_data.get('ProtocolOverrides', changeset_data.get('protocol_overrides'))
+    if protocol_overrides:
         for setting, value in protocol_overrides.items():
             operations.append({
                 "op": "set",
@@ -642,11 +696,12 @@ def changeset_to_operations(changeset_data):
             })
     
     # Handle Reserved Memory
-    if 'reserved_memory' in changeset_data:
+    reserved_memory = changeset_data.get('ReservedMemory', changeset_data.get('reserved_memory'))
+    if reserved_memory:
         operations.append({
             "op": "set",
             "path": ["UEFI", "ReservedMemory"],
-            "value": changeset_data['reserved_memory']
+            "value": reserved_memory
         })
 
     return operations
@@ -710,7 +765,12 @@ def post_process_config(config_path):
                     # Only convert to binary if it looks like base64 and is a property that should be binary
                     # Properties like layout-id, device-id, etc. are typically base64
                     # Properties like hda-gfx, model, AAPL,ig-platform-id are often strings
-                    binary_properties = ['layout-id', 'device-id', 'vendor-id', 'subsystem-id', 'subsystem-vendor-id', 'built-in']
+                    binary_properties = [
+                        'layout-id', 'device-id', 'vendor-id', 'subsystem-id', 
+                        'subsystem-vendor-id', 'built-in', 'class-code', 'compatible',
+                        'reg', 'acpi-path', 'acpi-device', 'AAPL,slot-name',
+                        'pci-aspm-default', 'AAPL,boot-display'
+                    ]
                     if prop_name in binary_properties:
                         try:
                             # Convert base64 string to binary data
@@ -826,12 +886,14 @@ def main():
     changeset_data = apply_platform_info_to_nvram(changeset_data)
     
     # Copy ACPI files if specified in changeset
-    if 'acpi_add' in changeset_data:
-        copy_acpi_files(changeset_data['acpi_add'])
+    acpi_add = changeset_data.get('AcpiAdd', changeset_data.get('acpi_add'))
+    if acpi_add:
+        copy_acpi_files(acpi_add)
     
     # Handle AMD Vanilla patches flag
     amd_enabled = False
-    if changeset_data.get('amd_vanilla_patches', False):
+    amd_vanilla_patches = changeset_data.get('AmdVanillaPatches', changeset_data.get('amd_vanilla_patches', False))
+    if amd_vanilla_patches:
         amd_enabled = True
         log("AMD Vanilla patches enabled in changeset")
         # Load and modify AMD patches
@@ -843,13 +905,13 @@ def main():
             modified_amd_patches = modify_amd_core_count_patches(amd_patches, core_count)
             
             # Merge with any existing kernel patches
-            existing_patches = changeset_data.get('kernel_patches', [])
+            existing_patches = changeset_data.get('KernelPatches', changeset_data.get('kernel_patches', []))
             if existing_patches:
                 log(f"Merging {len(modified_amd_patches)} AMD patches with {len(existing_patches)} existing kernel patches")
-                changeset_data['kernel_patches'] = existing_patches + modified_amd_patches
+                changeset_data['KernelPatches'] = existing_patches + modified_amd_patches
             else:
                 log(f"Adding {len(modified_amd_patches)} AMD patches to changeset")
-                changeset_data['kernel_patches'] = modified_amd_patches
+                changeset_data['KernelPatches'] = modified_amd_patches
         else:
             warn("AMD Vanilla patches requested but could not be loaded")
     

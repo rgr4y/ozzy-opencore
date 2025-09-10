@@ -58,6 +58,7 @@ deploy/
 config/deploy.env
 *.log
 *.tmp
+tmp/*
 
 # Proxmox VM configurations (keep templates, ignore instances)
 config/proxmox/*.conf

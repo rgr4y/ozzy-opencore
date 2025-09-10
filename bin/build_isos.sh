@@ -93,6 +93,6 @@ build_iso() {
   fi
 }
 # Normal OC ISO
-build_iso "$EFI_BUILD" "$OUT/opencore.iso" "OC_BOOT"
+build_iso "$EFI_BUILD" "$OUT/opencore.iso" "OZZY_ISO"
 
 echo "[*] ISO created at $OUT/opencore.iso"

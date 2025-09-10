@@ -26,7 +26,7 @@ def populate_efi_assets(changeset_name):
     with open(changeset_path, 'r') as f:
         changeset_data = yaml.safe_load(f)
     
-    efi_base = ROOT / "out" / "efi" / "EFI"
+    efi_base = ROOT / "out" / "build" / "efi" / "EFI"
     oc_dir = efi_base / "OC"
     
     # Ensure directories exist and clean up any old kext files
@@ -44,7 +44,7 @@ def populate_efi_assets(changeset_name):
     kexts_dir.mkdir(parents=True, exist_ok=True)
     
     # Copy kexts
-    if 'kexts' in changeset_data:
+    if 'Kexts' in changeset_data:
         log("Copying kexts...")
         
         # Load sources.json to get build types
@@ -59,7 +59,7 @@ def populate_efi_assets(changeset_name):
                     build_type = kext_config.get('build_type', 'RELEASE').lower()
                     kext_build_types[kext_name] = build_type
         
-        for kext in changeset_data['kexts']:
+        for kext in changeset_data['Kexts']:
             kext_name = kext['bundle']
             build_type = kext_build_types.get(kext_name, 'release')
             
@@ -110,9 +110,9 @@ def populate_efi_assets(changeset_name):
                 warn(f"Kext not found: {kext_name} (searched in {len(source_locations)} locations)")
     
     # Copy drivers
-    if 'uefi_drivers' in changeset_data:
+    if 'UefiDrivers' in changeset_data:
         log("Copying UEFI drivers...")
-        for driver in changeset_data['uefi_drivers']:
+        for driver in changeset_data['UefiDrivers']:
             driver_name = driver['path']
             # Look for drivers in various locations
             source_locations = [
@@ -134,9 +134,9 @@ def populate_efi_assets(changeset_name):
                 warn(f"Driver not found: {driver_name}")
 
     # Copy tools
-    if 'tools' in changeset_data:
+    if 'MiscTools' in changeset_data:
         log("Copying tools...")
-        for tool in changeset_data['tools']:
+        for tool in changeset_data['MiscTools']:
             tool_name = tool['Path']
             # Look for tools in various locations
             source_locations = [
@@ -156,9 +156,9 @@ def populate_efi_assets(changeset_name):
                 run_command(f'cp "{source_tool}" "{target_tool}"', f"Copying {tool_name}")
             else:
                 warn(f"Tool not found: {tool_name}")    # Copy ACPI files
-    if 'acpi_add' in changeset_data:
+    if 'AcpiAdd' in changeset_data:
         log("Copying ACPI files...")
-        for acpi_file in changeset_data['acpi_add']:
+        for acpi_file in changeset_data['AcpiAdd']:
             # Look for ACPI files in multiple locations
             source_locations = [
                 ROOT / "assets" / acpi_file,
@@ -201,12 +201,12 @@ def populate_efi_assets(changeset_name):
         warn(f"OpenCore.efi not found at {opencore_source}")
 
 def full_usb_workflow(changeset_name, output_path=None, force=False, eject=False):
-    """Execute the full USB workflow: changeset → ISO → USB → Deploy"""
+    """Execute the full USB workflow: changeset → USB → Deploy"""
     
     log(f"Starting full USB workflow for changeset: {changeset_name}")
     
     # Step 1: Apply changeset
-    log("Step 1/4: Applying changeset...")
+    log("Step 1/3: Applying changeset...")
     apply_script = ROOT / "scripts" / "apply-changeset.py"
     changeset_path = ROOT / "config" / "changesets" / f"{changeset_name}.yaml"
     
@@ -227,7 +227,7 @@ def full_usb_workflow(changeset_name, output_path=None, force=False, eject=False
         return False
     
     # Step 1.5: Populate EFI structure with assets
-    log("Step 1.5/4: Populating EFI structure with assets...")
+    log("Step 1.5/3: Populating EFI structure with assets...")
     try:
         populate_efi_assets(changeset_name)
         log("✓ EFI assets populated successfully")
@@ -235,24 +235,10 @@ def full_usb_workflow(changeset_name, output_path=None, force=False, eject=False
         error(f"Failed to populate EFI assets: {e}")
         return False
     
-    # Step 2: Build ISO
-    log("Step 2/4: Building OpenCore ISO...")
-    build_iso_script = ROOT / "scripts" / "build-iso.py"
-    cmd = [sys.executable, str(build_iso_script)]
-    if force:
-        cmd.append("--force")
-    
-    try:
-        result = subprocess.run(cmd, cwd=ROOT, check=True)
-        log("✓ ISO built successfully")
-    except subprocess.CalledProcessError as e:
-        error(f"Failed to build ISO: {e}")
-        return False
-    
-    # Step 3: Create USB structure
-    log("Step 3/4: Creating USB EFI structure...")
+    # Step 2: Create USB structure (skip ISO building for USB workflow)
+    log("Step 2/3: Creating USB EFI structure...")
     build_usb_script = ROOT / "scripts" / "build-usb.py"
-    cmd = [sys.executable, str(build_usb_script), "--changeset", changeset_name]
+    cmd = [sys.executable, str(build_usb_script), changeset_name]
     
     if output_path:
         cmd.extend(["--output", output_path])
@@ -266,9 +252,9 @@ def full_usb_workflow(changeset_name, output_path=None, force=False, eject=False
         error(f"Failed to create USB structure: {e}")
         return False
     
-    # Step 4: Deploy to USB (if Install volume is available)
+    # Step 3: Deploy to USB (if Install volume is available)
     log("------------------------------------------------")
-    log("Step 4/4: Deploying EFI to USB Install volume...")
+    log("Step 3/3: Deploying EFI to USB Install volume...")
     deploy_usb_script = ROOT / "scripts" / "deploy-usb.py"
     cmd = [sys.executable, str(deploy_usb_script)]
     

@@ -98,7 +98,7 @@ def full_deploy_workflow(changeset_name, force=False, build_only=False, iso_only
         
         # Stop VM if running
         log(f"Stopping VM {vmid} if running...")
-        # ssh(f"qm stop {vmid}")  # Don't fail if VM is already  stopped
+        ssh(f"qm stop {vmid}")  # Don't fail if VM is already  stopped
         
         # Configure VM storage
         log("Configuring VM storage...")
@@ -107,8 +107,8 @@ def full_deploy_workflow(changeset_name, force=False, build_only=False, iso_only
         
         # Start VM
         log(f"Starting VM {vmid}...")
-        #if not ssh(f"sleep 3 && qm start {vmid}"):
-        #    return False
+        if not ssh(f"sleep 3 && qm start {vmid}"):
+            return False
         
         log("✓ Deployment completed successfully")
         
