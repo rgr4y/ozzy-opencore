@@ -141,7 +141,7 @@ def deploy_img(changeset_name, vmid, config):
             # Use pvesm alloc to create/ensure managed disk exists
             log(f"Allocating managed disk: {disk_name}")
             result = subprocess.run(
-                ['ssh', f"root@{config['host']}", f"pvesm alloc local {vmid} {disk_name} 150M --format raw"],
+                ['ssh', f"{config['user']}@{config['host']}", f"pvesm alloc local {vmid} {disk_name} 150M --format raw"],
                 capture_output=True, text=True, check=False
             )
             
@@ -167,11 +167,6 @@ def deploy_img(changeset_name, vmid, config):
                 
                 if disk_path:
                     log(f"Created new disk at: {disk_path}")
-                elif "already exists" in result.stderr:
-                    # Disk already exists, construct the path
-                    disk_path = f"/var/lib/vz/images/{vmid}/{disk_name}"
-                    disk_ref = f"local:{vmid}/{disk_name}"
-                    log(f"Using existing disk at: {disk_path}")
                 else:
                     error(f"Could not determine disk path from pvesm output: {result.stdout}")
                     return False
@@ -180,6 +175,11 @@ def deploy_img(changeset_name, vmid, config):
                 if not disk_ref:
                     disk_ref = f"local:{vmid}/{disk_name}"
                     
+            elif "already exists" in result.stderr:
+                # Disk already exists, that's fine - we'll overwrite it
+                disk_path = f"/var/lib/vz/images/{vmid}/{disk_name}"
+                disk_ref = f"local:{vmid}/{disk_name}"
+                log(f"Disk already exists, will overwrite: {disk_path}")
             else:
                 error(f"Failed to allocate disk: {result.stderr}")
                 return False

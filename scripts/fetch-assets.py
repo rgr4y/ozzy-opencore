@@ -241,14 +241,83 @@ def main():
     print("[*] Assets ready.")
 
 def fetch_kexts(config, out_dir, dst_dir):
-    """Fetch kexts from GitHub releases with proper caching"""
+    """Fetch kexts from GitHub releases or local files with proper caching"""
     # Create cache directory - use original kext-cache location
     cache_dir = out_dir / "kext-cache"
     cache_dir.mkdir(exist_ok=True)
 
     for kext in config["kexts"]:
-        repo = kext["repo"]
         name = kext["name"]
+        
+        # Handle local kexts
+        if "local_path" in kext:
+            local_path = Path(kext["local_path"])
+            if not local_path.is_absolute():
+                local_path = Path(__file__).parent.parent / local_path
+            
+            print(f"[*] Processing {name} from local path: {local_path}")
+            
+            if not local_path.exists():
+                print(f"[ERROR] Local kext file not found: {local_path}")
+                continue
+            
+            try:
+                with zipfile.ZipFile(local_path, 'r') as zip_ref:
+                    # Look for .kext directories in the zip
+                    kext_found = False
+                    for item in zip_ref.namelist():
+                        if item.endswith('.kext/') or (item.endswith('.kext') and '/' not in item):
+                            # Handle directory names that end with /
+                            if item.endswith('/'):
+                                kext_name = item.rstrip('/').split('/')[-1]
+                            else:
+                                kext_name = item.split('/')[-1] if '/' in item else item
+                            
+                            # Check both full name and base name (without .kext)
+                            kext_base_name = name.replace('.kext', '')
+                            if kext_name == name or kext_name == kext_base_name or kext_name == kext_base_name + '.kext':
+                                # Extract the kext
+                                members_to_extract = [m for m in zip_ref.namelist() if m.startswith(item.rstrip('/') + '/') and not '.dSYM' in m]
+                                if not members_to_extract:
+                                    members_to_extract = [m for m in zip_ref.namelist() if m.startswith(item.rstrip('/'))]
+                                
+                                # Extract to temp location and copy to avoid path issues
+                                import tempfile
+                                with tempfile.TemporaryDirectory() as temp_dir:
+                                    zip_ref.extractall(temp_dir, members=members_to_extract)
+                                    
+                                    # Find the extracted kext
+                                    temp_path = Path(temp_dir)
+                                    extracted_kext = None
+                                    for root, dirs, files in os.walk(temp_path):
+                                        for dir_name in dirs:
+                                            if dir_name.endswith('.kext'):
+                                                extracted_kext = Path(root) / dir_name
+                                                break
+                                        if extracted_kext:
+                                            break
+                                    
+                                    if extracted_kext:
+                                        final_kext_path = dst_dir / extracted_kext.name
+                                        if final_kext_path.exists():
+                                            shutil.rmtree(final_kext_path)
+                                        shutil.copytree(extracted_kext, final_kext_path)
+                                        print(f"[✓] Installed {name} from local file")
+                                        kext_found = True
+                                        break
+                    
+                    if not kext_found:
+                        print(f"[!] Could not find {name} in {local_path}")
+            except Exception as e:
+                print(f"[!] Failed to extract {name} from local file: {e}")
+            continue
+        
+        # Handle GitHub repo kexts (existing logic)
+        if "repo" not in kext:
+            print(f"[ERROR] Kext {name} has neither 'repo' nor 'local_path' specified")
+            continue
+            
+        repo = kext["repo"]
         build_type = kext.get("build_type", "RELEASE")  # Default to RELEASE if not specified
         
         print(f"[*] Processing {name} from {repo} ({build_type} build)")
@@ -381,6 +450,7 @@ def fetch_kexts(config, out_dir, dst_dir):
                                             members_to_extract = [m for m in zip_ref.namelist() if m.startswith(f'Kexts/{kext_dir_name}/') and not '.dSYM' in m]
                                         
                                         # Extract to a temp location and then move to avoid nesting
+                                        import tempfile
                                         with tempfile.TemporaryDirectory() as temp_dir:
                                             zip_ref.extractall(temp_dir, members=members_to_extract)
                                             temp_kext_path = Path(temp_dir) / 'Kexts' / kext_dir_name

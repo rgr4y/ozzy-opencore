@@ -24,11 +24,6 @@
       "repo": "acidanthera/Lilu"
     },
     {
-      "name": "NVMeFix.kext",
-      "repo": "acidanthera/NVMeFix",
-      "build_type": "DEBUG"
-    },
-    {
       "name": "VirtualSMC.kext",
       "repo": "acidanthera/VirtualSMC"
     },
@@ -37,19 +32,15 @@
       "repo": "acidanthera/WhateverGreen"
     },
     {
-      "name": "RestrictEvents.kext",
-      "repo": "acidanthera/RestrictEvents"
-    },
-    {
       "name": "AppleALC.kext",
       "repo": "acidanthera/AppleALC"
     },
     {
-      "name": "AirportBrcmFixup.kext",
-      "repo": "acidanthera/AirportBrcmFixup"
+      "name": "itlwm.kext",
+      "local_path": "assets/itlwb_v2.3.0_stable.kext.zip"
     },
     {
-      "name": "BrcmFirmwareData.kext",
+      "name": "BlueToolFixup.kext",
       "repo": "acidanthera/BrcmPatchRAM"
     },
     {
@@ -57,8 +48,20 @@
       "repo": "acidanthera/BrcmPatchRAM"
     },
     {
-      "name": "BlueToolFixup.kext",
+      "name": "BrcmFirmwareData.kext",
       "repo": "acidanthera/BrcmPatchRAM"
+    },
+    {
+      "name": "IntelBluetoothFirmware.kext",
+      "repo": "OpenIntelWireless/IntelBluetoothFirmware"
+    },
+    {
+      "name": "IntelBTPatcher.kext",
+      "repo": "OpenIntelWireless/IntelBluetoothFirmware"
+    },
+    {
+      "name": "IntelBTBuiltIn.kext",
+      "local_path": "assets/IntelBTBuiltIn.kext.zip"
     }
   ]
 }

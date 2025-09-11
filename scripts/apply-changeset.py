@@ -149,6 +149,59 @@ def apply_platform_info_to_nvram(changeset_data):
     
     return changeset_data
 
+def process_nvram_value(var_name, var_value):
+    """Process NVRAM values and convert certain fields to binary data"""
+    import base64
+    
+    # Fields that should be treated as binary data (will generate <data> tags)
+    binary_fields = [
+        'bluetoothActiveControllerInfo',
+        'bluetoothInternalControllerInfo', 
+        'bluetoothExternalDongleFailed',
+        'SystemAudioVolume',
+        'csr-active-config',
+        'prev-lang:kbd'
+    ]
+    
+    # If it's already binary data (from !!binary YAML), keep it as is
+    if isinstance(var_value, bytes):
+        return var_value
+    
+    # If it's a string field that should be binary, try to convert it
+    if var_name in binary_fields and isinstance(var_value, str):
+        # For hex strings (like "00000000 00000000 00000000 0000")
+        if var_name in ['bluetoothActiveControllerInfo', 'bluetoothInternalControllerInfo']:
+            try:
+                # Remove spaces and convert hex to bytes
+                hex_clean = var_value.replace(' ', '')
+                return bytes.fromhex(hex_clean)
+            except ValueError:
+                # If not hex, encode as UTF-8
+                return var_value.encode('utf-8')
+        
+        # For simple hex strings like "00"
+        elif var_name == 'bluetoothExternalDongleFailed':
+            try:
+                return bytes.fromhex(var_value)
+            except ValueError:
+                return var_value.encode('utf-8')
+        
+        # For other binary fields, try base64 first, then hex, then UTF-8
+        else:
+            try:
+                # Try base64 decode
+                return base64.b64decode(var_value)
+            except:
+                try:
+                    # Try hex decode
+                    return bytes.fromhex(var_value.replace(' ', ''))
+                except:
+                    # Fall back to UTF-8 encoding
+                    return var_value.encode('utf-8')
+    
+    # Return as-is for non-binary fields or non-string values
+    return var_value
+
 def changeset_to_operations(changeset_data):
     """Convert changeset data to patch operations for patch-plist.py"""
     operations = []
@@ -174,14 +227,34 @@ def changeset_to_operations(changeset_data):
         return patches
     
     # Handle kexts - replace entire Kernel.Add list
-    kexts = changeset_data.get('Kexts', changeset_data.get('kexts'))
+    # Check for both Kexts and KernelAdd, but don't allow both
+    kexts_field = changeset_data.get('Kexts', changeset_data.get('kexts'))
+    kernel_add_field = changeset_data.get('KernelAdd', changeset_data.get('kernel_add'))
+    
+    if kexts_field and kernel_add_field:
+        error("Changeset contains both 'Kexts' and 'KernelAdd' fields!")
+        error("Please use only one format - either 'Kexts' or 'KernelAdd'.")
+        sys.exit(1)
+    
+    kexts = kexts_field or kernel_add_field
     if kexts:
         kext_entries = []
         for kext in kexts:
-            # Set ExecutablePath - empty string if no exec, otherwise Contents/MacOS/exec
+            # Handle both exec and ExecutablePath fields, but don't allow both
+            exec_field = kext.get('exec')
+            executable_path_field = kext.get('ExecutablePath')
+            
+            if exec_field is not None and executable_path_field is not None:
+                error(f"Kext '{kext.get('bundle', 'unknown')}' contains both 'exec' and 'ExecutablePath' fields!")
+                error("Please use only one format - either 'exec' or 'ExecutablePath'.")
+                sys.exit(1)
+            
+            # Set ExecutablePath - use ExecutablePath directly if provided, otherwise build from exec
             exec_path = ""
-            if kext.get('exec') and kext['exec'].strip():
-                exec_path = f"Contents/MacOS/{kext['exec']}"
+            if executable_path_field is not None:
+                exec_path = executable_path_field
+            elif exec_field and exec_field.strip():
+                exec_path = f"Contents/MacOS/{exec_field}"
             
             kext_entry = {
                 "Arch": "Any",
@@ -189,16 +262,60 @@ def changeset_to_operations(changeset_data):
                 "Comment": kext['bundle'],  # Use bundle path as comment
                 "Enabled": True,
                 "ExecutablePath": exec_path,
-                "MaxKernel": "",
-                "MinKernel": "",
+                "MaxKernel": kext.get('MaxKernel', ''),
+                "MinKernel": kext.get('MinKernel', ''),
                 "PlistPath": "Contents/Info.plist"
             }
+            
+            # Add Identifier if specified
+            if 'Identifier' in kext and kext['Identifier']:
+                kext_entry["Identifier"] = kext['Identifier']
             kext_entries.append(kext_entry)
         
         operations.append({
             "op": "set",
             "path": ["Kernel", "Add"],
             "value": kext_entries
+        })
+    
+    # Handle kernel force - set Kernel.Force
+    kernel_force = changeset_data.get('KernelForce', changeset_data.get('kernel_force'))
+    if kernel_force:
+        force_entries = []
+        for force in kernel_force:
+            # Handle both exec and ExecutablePath fields, but don't allow both
+            exec_field = force.get('exec')
+            executable_path_field = force.get('ExecutablePath')
+            
+            if exec_field is not None and executable_path_field is not None:
+                error(f"KernelForce entry '{force.get('bundle', 'unknown')}' contains both 'exec' and 'ExecutablePath' fields!")
+                error("Please use only one format - either 'exec' or 'ExecutablePath'.")
+                sys.exit(1)
+            
+            # Set ExecutablePath - use ExecutablePath directly if provided, otherwise build from exec
+            exec_path = ""
+            if executable_path_field is not None:
+                exec_path = executable_path_field
+            elif exec_field and exec_field.strip():
+                exec_path = f"Contents/MacOS/{exec_field}"
+            
+            force_entry = {
+                "Arch": force.get('Arch', 'Any'),
+                "BundlePath": force['bundle'],
+                "Comment": force.get('Comment', force['bundle']),
+                "Enabled": force.get('Enabled', True),
+                "ExecutablePath": exec_path,
+                "Identifier": force['Identifier'],  # Required field
+                "MaxKernel": force.get('MaxKernel', ''),
+                "MinKernel": force.get('MinKernel', ''),
+                "PlistPath": force.get('PlistPath', 'Contents/Info.plist')
+            }
+            force_entries.append(force_entry)
+        
+        operations.append({
+            "op": "set",
+            "path": ["Kernel", "Force"],
+            "value": force_entries
         })
     
     # Handle booter quirks - merge into Booter.Quirks
@@ -244,6 +361,28 @@ def changeset_to_operations(changeset_data):
             "op": "set",
             "path": ["Kernel", "Patch"],
             "value": patches
+        })
+    
+    # Handle kernel blocks/exclusions - set Kernel.Block
+    kernel_blocks = changeset_data.get('KernelBlock', changeset_data.get('kernel_blocks'))
+    if kernel_blocks:
+        block_entries = []
+        for block in kernel_blocks:
+            block_entry = {
+                "Arch": block.get('Arch', 'Any'),
+                "Comment": block.get('Comment', block.get('Identifier', '')),
+                "Enabled": block.get('Enabled', True),
+                "Identifier": block['Identifier'],
+                "MaxKernel": block.get('MaxKernel', ''),
+                "MinKernel": block.get('MinKernel', ''),
+                "Strategy": block.get('Strategy', 'Exclude')
+            }
+            block_entries.append(block_entry)
+        
+        operations.append({
+            "op": "set",
+            "path": ["Kernel", "Block"],
+            "value": block_entries
         })
     
     # Handle boot-args - can be defined as top-level BootArgs/boot_args OR in NVRAM section
@@ -452,10 +591,14 @@ def changeset_to_operations(changeset_data):
                     # Skip boot-args as it's handled separately above
                     if var_name == 'boot-args':
                         continue
+                    
+                    # Convert certain fields to binary data for proper <data> tag generation
+                    processed_value = process_nvram_value(var_name, var_value)
+                    
                     operations.append({
                         "op": "set",
                         "path": ["NVRAM", "Add", guid, var_name],
-                        "value": var_value
+                        "value": processed_value
                     })
         
         # Handle NVRAM Delete section
@@ -892,9 +1035,18 @@ def main():
     if acpi_add:
         copy_acpi_files(acpi_add)
     
-    # Handle AMD Vanilla patches flag
+    # Handle AMD Vanilla patches flag - check both top-level and Ozzy section
     amd_enabled = False
-    amd_vanilla_patches = changeset_data.get('AmdVanillaPatches', changeset_data.get('amd_vanilla_patches', False))
+    
+    # Check for Ozzy section first, then fall back to top-level
+    ozzy_config = changeset_data.get('Ozzy', {})
+    amd_vanilla_patches = (
+        ozzy_config.get('AmdVanillaPatches') or 
+        ozzy_config.get('amd_vanilla_patches') or
+        changeset_data.get('AmdVanillaPatches') or 
+        changeset_data.get('amd_vanilla_patches') or
+        False
+    )
     if amd_vanilla_patches:
         amd_enabled = True
         log("AMD Vanilla patches enabled in changeset")

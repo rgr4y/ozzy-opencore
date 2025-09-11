@@ -2,21 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key># RG BASE EFI - For Proxmox - RELEASE Version - OC 1.0.5</key>
+	<key># OZZY BASE EFI - OC 1.0.5</key>
 	<string></string>
 	<key>ACPI</key>
 	<dict>
 		<key>Add</key>
-		<array>
-			<dict>
-				<key>Comment</key>
-				<string>SSDT-EC-USBX.aml</string>
-				<key>Enabled</key>
-				<true/>
-				<key>Path</key>
-				<string>SSDT-EC-USBX.aml</string>
-			</dict>
-		</array>
+		<array/>
 		<key>Delete</key>
 		<array/>
 		<key>Patch</key>
