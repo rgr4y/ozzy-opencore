@@ -32,10 +32,6 @@ def run_script(script_path, args_list, description):
         error(f"Failed to run {description}: {e}")
         return False
 
-def run_workflow(workflow_path, args_list, description):
-    """Run a workflow script with the given arguments"""
-    return run_script(workflow_path, args_list, description)
-
 def check_python_env():
     """Check if Python environment has required packages"""
     try:
@@ -51,174 +47,140 @@ def normalize_changeset_name(changeset_name):
         return changeset_name[:-5]
     return changeset_name
 
-# Command implementations
-def cmd_apply(args):
-    """Apply a changeset to OpenCore configuration"""
-    if not check_python_env():
-        warn("Python environment not ready. Run: ./ozzy setup-env")
-        return False
+def requires_python_env(func):
+    """Decorator to check Python environment before running command"""
+    def wrapper(*args, **kwargs):
+        if not check_python_env():
+            warn("Python environment not ready. Run: ./ozzy setup-env")
+            return False
+        return func(*args, **kwargs)
+    return wrapper
+
+def build_script_args(args, base_args=None, extra_args=None, flags=None, changeset_first=True):
+    """Build command arguments from args object with common patterns"""
+    cmd_args = list(base_args) if base_args else []
     
+    # Add changeset if present and should be first
+    if changeset_first and hasattr(args, 'changeset') and args.changeset:
+        changeset_name = normalize_changeset_name(args.changeset)
+        cmd_args.insert(0, changeset_name)
+    
+    # Add output if present
+    if hasattr(args, 'output') and args.output:
+        cmd_args.extend(['--output', args.output])
+    
+    # Add common flags
+    if flags:
+        for flag in flags:
+            if getattr(args, flag.replace('-', '_'), False):
+                cmd_args.append(f'--{flag}')
+    
+    # Add any extra arguments
+    if extra_args:
+        cmd_args.extend(extra_args)
+    
+    return cmd_args
+
+def run_script_command(script_path, args, description, base_args=None, extra_args=None, flags=None, changeset_first=True):
+    """Run a script with standardized argument handling"""
+    cmd_args = build_script_args(args, base_args, extra_args, flags, changeset_first)
+    return run_script(script_path, cmd_args, description)
+
+# Command implementations
+@requires_python_env
+def cmd_apply(args, extra_args=None):
+    """Apply a changeset to OpenCore configuration"""
     script = ROOT / "scripts" / "apply-changeset.py"
     changeset_name = normalize_changeset_name(args.changeset)
-    return run_script(script, [changeset_name], "Apply changeset")
+    cmd_args = [changeset_name]
+    if extra_args:
+        cmd_args.extend(extra_args)
+    return run_script(script, cmd_args, "Apply changeset")
 
+@requires_python_env
 def cmd_build_iso(args):
     """Build OpenCore ISO"""
-    if not check_python_env():
-        warn("Python environment not ready. Run: ./ozzy setup-env")
-        return False
-    
     script = ROOT / "scripts" / "build-iso.py"
-    cmd_args = [args.changeset]
-    if getattr(args, 'force', False):
-        cmd_args.append('--force')
-    if getattr(args, 'no_validate', False):
-        cmd_args.append('--no-validate')
-    return run_script(script, cmd_args, "Build ISO")
+    return run_script_command(script, args, "Build ISO", 
+                             flags=['force', 'no-validate'])
 
+@requires_python_env
 def cmd_build_usb(args):
     """Build USB EFI structure"""
-    if not check_python_env():
-        warn("Python environment not ready. Run: ./ozzy setup-env")
-        return False
-    
     script = ROOT / "scripts" / "build-usb.py"
-    cmd_args = [args.changeset]
-    if args.output:
-        cmd_args.extend(['--output', args.output])
-    if getattr(args, 'force', False):
-        cmd_args.append('--force')
-    return run_script(script, cmd_args, "Build USB")
+    return run_script_command(script, args, "Build USB", 
+                             flags=['force'])
 
 def cmd_validate(args):
     """Validate OpenCore configuration"""
     script = ROOT / "scripts" / "validate-config.py"
-    cmd_args = []
-    if args.config:
-        cmd_args.append(args.config)
+    cmd_args = [args.config] if args.config else []
     return run_script(script, cmd_args, "Validate configuration")
 
+@requires_python_env
 def cmd_generate_smbios(args):
     """Generate SMBIOS data"""
-    if not check_python_env():
-        warn("Python environment not ready. Run: ./ozzy setup-env")
-        return False
-    
     script = ROOT / "scripts" / "generate-serial.py"
-    changeset_name = normalize_changeset_name(args.changeset)
-    script_args = [changeset_name]
-    if hasattr(args, 'force') and args.force:
-        script_args.append('--force')
-    return run_script(script, script_args, "Generate SMBIOS")
+    return run_script_command(script, args, "Generate SMBIOS", 
+                             flags=['force'])
 
+@requires_python_env
 def cmd_generate_serial(args):
     """Generate serial numbers and UUIDs"""
-    if not check_python_env():
-        warn("Python environment not ready. Run: ./ozzy setup-env")
-        return False
-    
     script = ROOT / "scripts" / "generate-serial.py"
     cmd_args = []
     
     if args.changeset:
         changeset_name = normalize_changeset_name(args.changeset)
         cmd_args.append(changeset_name)
-    if getattr(args, 'force', False):
-        cmd_args.append('--force')
-    if getattr(args, 'list', False):
-        cmd_args.append('--list')
-    if getattr(args, 'serial_only', False):
-        cmd_args.append('--serial-only')
-    if getattr(args, 'rom_uuid_only', False):
-        cmd_args.append('--rom-uuid-only')
+    
+    # Add flags
+    for flag in ['force', 'list', 'serial-only', 'rom-uuid-only']:
+        attr_name = flag.replace('-', '_')
+        if getattr(args, attr_name, False):
+            cmd_args.append(f'--{flag}')
     
     return run_script(script, cmd_args, "Generate serial numbers")
 
+@requires_python_env
 def cmd_read_config(args):
     """Read existing config.plist and convert to changeset format"""
-    if not check_python_env():
-        warn("Python environment not ready. Run: ./ozzy setup-env")
-        return False
-    
     script = ROOT / "scripts" / "read-config.py"
-    cmd_args = [args.config]
-    
-    if args.output:
-        cmd_args.extend(['--output', args.output])
-    
-    return run_script(script, cmd_args, "Read config")
+    return run_script_command(script, args, "Read config", 
+                             base_args=[args.config], changeset_first=False)
 
 # Workflow commands
+@requires_python_env
 def cmd_full_usb(args):
     """Full USB workflow: changeset → ISO → USB"""
-    if not check_python_env():
-        warn("Python environment not ready. Run: ./ozzy setup-env")
-        return False
-    
     workflow = ROOT / "workflows" / "full-usb.py"
-    changeset_name = normalize_changeset_name(args.changeset)
-    
-    cmd_args = [changeset_name]
-    if args.output:
-        cmd_args.extend(['--output', args.output])
-    if getattr(args, 'force', False):
-        cmd_args.append('--force')
-    if getattr(args, 'eject', False):
-        cmd_args.append('--eject')
-    return run_workflow(workflow, cmd_args, "Full USB workflow")
+    return run_script_command(workflow, args, "Full USB workflow", 
+                             flags=['force', 'eject'])
 
+@requires_python_env
 def cmd_full_deploy(args):
     """Full deploy workflow: changeset → IMG/ISO → Proxmox"""
-    if not check_python_env():
-        warn("Python environment not ready. Run: ./ozzy setup-env")
-        return False
-    
     # Validate argument combinations
     if getattr(args, 'iso_only', False) and getattr(args, 'force', False):
         error("Cannot use --iso-only and --force together. --iso-only skips the apply step, making --force redundant.")
         return False
     
-    if getattr(args, 'build_only', False) and getattr(args, 'force', False):
-        error("Cannot use --build-only and --force together. --build-only skips the apply step, making --force redundant.")
-        return False
-    
     workflow = ROOT / "workflows" / "full-deploy.py"
-    changeset_name = normalize_changeset_name(args.changeset)
-    
-    cmd_args = [changeset_name]
-    if getattr(args, 'force', False):
-        cmd_args.append('--force')
-    if getattr(args, 'build_only', False):
-        cmd_args.append('--build-only')
-    if getattr(args, 'iso_only', False):
-        cmd_args.append('--iso-only')
-    if getattr(args, 'iso', False):
-        cmd_args.append('--iso')
-    return run_workflow(workflow, cmd_args, "Full deploy workflow")
+    return run_script_command(workflow, args, "Full deploy workflow", 
+                             flags=['force', 'build-only', 'iso-only', 'iso'])
 
+@requires_python_env
 def cmd_switch(args):
     """Switch changeset for testing"""
-    if not check_python_env():
-        warn("Python environment not ready. Run: ./ozzy setup-env")
-        return False
-    
     workflow = ROOT / "workflows" / "switch-changeset.py"
-    changeset_name = normalize_changeset_name(args.changeset)
-    
-    cmd_args = [changeset_name]
-    if getattr(args, 'force', False):
-        cmd_args.append('--force')
-    return run_workflow(workflow, cmd_args, "Switch changeset")
+    return run_script_command(workflow, args, "Switch changeset", 
+                             flags=['force'])
 
 # Utility commands
 def cmd_fetch(args):
     """Fetch OpenCore assets"""
     script = ROOT / "scripts" / "fetch-assets.py"
-    try:
-        result = subprocess.run([sys.executable, str(script)], cwd=ROOT, check=True)
-        return True
-    except subprocess.CalledProcessError:
-        return False
+    return run_script(script, [], "Fetch assets")
 
 def cmd_clean(args):
     """Clean output directories"""
@@ -246,6 +208,15 @@ def cmd_setup_env(args):
     except subprocess.CalledProcessError:
         return False
 
+def display_changesets(changesets, title="Available changesets"):
+    """Display a list of changesets in a consistent format"""
+    if changesets:
+        log(f"{title}:")
+        for cs in sorted(changesets):
+            info(f"  - {cs}")
+    else:
+        warn("No changesets found")
+
 def cmd_status(args):
     """Show project status"""
     log("Project Status")
@@ -261,12 +232,7 @@ def cmd_status(args):
     
     # Available changesets
     changesets = list_available_changesets()
-    if changesets:
-        log("Available Changesets:")
-        for cs in sorted(changesets):
-            info(f"  - {cs}")
-    else:
-        warn("No changesets found")
+    display_changesets(changesets)
     
     # Check key files
     config_file = ROOT / "out" / "build" / "efi" / "EFI" / "OC" / "config.plist"
@@ -474,20 +440,12 @@ def cmd_mount_efi(args):
 def cmd_list(args):
     """List available changesets"""
     changesets = list_available_changesets()
-    if changesets:
-        log("Available changesets:")
-        for cs in sorted(changesets):
-            info(f"  - {cs}")
-    else:
-        warn("No changesets found")
+    display_changesets(changesets)
     return True
 
+@requires_python_env
 def cmd_test(args):
     """Run the test suite"""
-    if not check_python_env():
-        warn("Python environment not ready. Run: ./ozzy setup-env")
-        return False
-    
     test_runner = ROOT / "tests" / "run-tests.py"
     return run_script(test_runner, [], "Test suite")
 
@@ -523,6 +481,7 @@ Examples:
   ./ozzy full-deploy myconfig --force
   ./ozzy full-deploy myconfig --build-only
   ./ozzy full-deploy myconfig --iso
+  ./ozzy full-deploy myconfig --iso-only  # Skip changeset apply, just build & deploy
   ./ozzy switch testconfig
   ./ozzy generate-serial myconfig --force
   ./ozzy generate-serial myconfig --serial-only  # Only regenerate serial/MLB
@@ -577,9 +536,9 @@ Examples:
     
     full_deploy_parser = subparsers.add_parser('full-deploy', help='Build IMG and deploy to Proxmox VM')
     full_deploy_parser.add_argument('changeset', help='Changeset name (without .yaml)')
-    full_deploy_parser.add_argument('--force', '-f', action='store_true', help='Force rebuild')
+    full_deploy_parser.add_argument('--force', '-f', action='store_true', help='Force rebuild of IMG/ISO')
     full_deploy_parser.add_argument('--build-only', '-b', action='store_true', help='Build only, do not deploy')
-    full_deploy_parser.add_argument('--iso-only', '-i', action='store_true', help='Skip fetch/apply/validation, build ISO and deploy')
+    full_deploy_parser.add_argument('--iso-only', '-i', action='store_true', help='Skip fetch/apply/validation, build ISO and deploy only')
     full_deploy_parser.add_argument('--iso', action='store_true', help='Build ISO instead of IMG (default is IMG)')
     
     switch_parser = subparsers.add_parser('switch', help='Switch changeset')
@@ -595,7 +554,7 @@ Examples:
     mount_efi_parser = subparsers.add_parser('mount-efi', help='Mount EFI partition from Install USB')
     test_parser = subparsers.add_parser('test', help='Run integration test suite')
     
-    args = parser.parse_args()
+    args, unknown_args = parser.parse_known_args()
     
     if not args.command:
         parser.print_help()
@@ -628,7 +587,14 @@ Examples:
         return 1
     
     try:
-        success = cmd_func(args)
+        # For apply command, pass through unknown arguments
+        if args.command == 'apply':
+            success = cmd_func(args, unknown_args)
+        else:
+            # For other commands, warn about unknown arguments
+            if unknown_args:
+                warn(f"Unknown arguments ignored: {' '.join(unknown_args)}")
+            success = cmd_func(args)
         return 0 if success else 1
     except KeyboardInterrupt:
         warn("Operation cancelled by user")

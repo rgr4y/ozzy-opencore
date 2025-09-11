@@ -686,7 +686,9 @@ def changeset_to_operations(changeset_data):
         })
     
     # Handle Protocol Overrides
-    protocol_overrides = changeset_data.get('ProtocolOverrides', changeset_data.get('protocol_overrides'))
+    protocol_overrides = changeset_data.get('UefiProtocolOverrides', 
+                                          changeset_data.get('ProtocolOverrides', 
+                                          changeset_data.get('protocol_overrides')))
     if protocol_overrides:
         for setting, value in protocol_overrides.items():
             operations.append({
