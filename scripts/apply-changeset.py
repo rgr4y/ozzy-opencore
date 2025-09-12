@@ -851,7 +851,7 @@ def changeset_to_operations(changeset_data):
 
     return operations
 
-def post_process_config(config_path):
+def post_process_config(config_path, changeset_name=None):
     """Fix binary data formats and remove warnings"""
     import subprocess
     import plistlib
@@ -984,6 +984,10 @@ def post_process_config(config_path):
     # Add generation timestamp
     current_time = datetime.now()
     config['#Generated'] = current_time.strftime('%Y-%m-%d %H:%M:%S')
+    
+    # Add changeset name if provided
+    if changeset_name:
+        config['#Changeset'] = changeset_name
     
     # Save the updated config
     with open(config_path, 'wb') as f:
@@ -1129,7 +1133,7 @@ def main():
         
         # Post-process the config to fix data format issues
         log("Post-processing config to fix binary data formats...")
-        post_process_config(target_config)
+        post_process_config(target_config, args.changeset)
         
     except subprocess.CalledProcessError as e:
         error(f"Patcher failed with exit code {e.returncode}")

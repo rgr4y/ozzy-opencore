@@ -10,8 +10,9 @@ Run on **macOS**. Builds OpenCore EFI configurations declaratively from YAML cha
 - 🔧 **AMD Vanilla Support**: Automatic core count detection and kernel patches for AMD Ryzen systems
 - 📦 **Smart Kext Management**: Automatic download from GitHub releases with DEBUG/RELEASE build selection
 - 🛡️ **Security & Debug Ready**: Full support for SecureBootModel, comprehensive debug logging, and NVRAM configuration
-- 🔄 **Multi-Deployment**: Create USB installers, ISOs, or deploy directly to Proxmox VMs
+- 🔄 **Multi-Deployment**: Create USB installers, ISOs, IMG files, or deploy directly to Proxmox VMs
 - ✅ **Validation Built-in**: Automatic OpenCore configuration validation with detailed error reporting
+- 📝 **Changeset Tracking**: Automatically embeds changeset YAML files in EFI structures for easy identification
 - 🎯 **Hardware Optimized**: Pre-configured for Ryzen 9 3950X + RX 580 systems with Sequoia support
 
 ## Quick Start
@@ -38,8 +39,8 @@ Run on **macOS**. Builds OpenCore EFI configurations declaratively from YAML cha
    # Apply configuration and create USB EFI
    ./ozzy full-usb ryzen3950x_rx580_AMDVanilla
    
-   # Or deploy to Proxmox VM
-   ./ozzy proxmox --changeset ryzen3950x_rx580_AMDVanilla
+   # Build and deploy IMG to Proxmox VM
+   ./ozzy full-deploy ryzen3950x_rx580_AMDVanilla
    
    # Or just apply the changeset
    ./ozzy apply ryzen3950x_rx580_AMDVanilla
@@ -69,6 +70,7 @@ The system automatically downloads and manages these kexts:
 - **Security**: SecureBootModel=Default, Vault=Optional, proper NVRAM configuration
 - **AMD Optimizations**: 25 kernel patches with automatic core count detection
 - **GPU**: agdpmod=pikera for optimal RX 580 performance
+- **Changeset Tracking**: Each EFI build includes the source changeset YAML file and identifier for easy troubleshooting
 
 ## SMBIOS Serial Generation
 
@@ -142,28 +144,36 @@ Create a USB-ready EFI structure for bare metal installation:
 python3 workflows/full-usb.py ryzen3950x_rx580_AMDVanilla --output /Volumes/EFI
 ```
 
-### ISO Creation
+### ISO & IMG Creation
 
-Build bootable OpenCore ISOs:
+Build bootable OpenCore ISOs or IMG files:
 
 ```bash
 # Build ISO from current configuration
 ./ozzy iso
 
+# Build IMG from current configuration
+python3 scripts/build-img.py --changeset ryzen3950x_rx580_AMDVanilla
+
 # Build ISO with specific changeset
 python3 scripts/build-iso.py --changeset ryzen3950x_rx580_AMDVanilla
 ```
+
+IMG files are 50MB raw disk images suitable for direct deployment to Proxmox VMs or other virtualization platforms.
 
 ### Proxmox Deployment
 
 Deploy to remote Proxmox VMs (requires SSH key setup):
 
 ```bash
-# Full deployment to Proxmox VM
-./ozzy proxmox --changeset ryzen3950x_rx580_AMDVanilla
+# Full deployment: build IMG and deploy to Proxmox VM
+./ozzy full-deploy ryzen3950x_rx580_AMDVanilla
 
-# Build only (no deployment)
-./ozzy proxmox --build-only
+# Build ISO and deploy instead of IMG
+./ozzy full-deploy ryzen3950x_rx580_AMDVanilla --iso
+
+# Legacy Proxmox deployment
+./ozzy proxmox --changeset ryzen3950x_rx580_AMDVanilla
 
 # Check deployment status
 ./ozzy status
@@ -184,9 +194,10 @@ The `ozzy` script provides a unified interface for all operations:
 
 # Build & Deploy
 ./ozzy full-usb <changeset>     # Complete USB workflow
+./ozzy full-deploy <changeset>  # Build IMG and deploy to Proxmox VM
 ./ozzy usb --changeset <changeset>  # Create USB EFI structure
 ./ozzy iso                      # Build OpenCore ISO
-./ozzy proxmox --changeset <changeset>  # Deploy to Proxmox VM
+./ozzy proxmox --changeset <changeset>  # Legacy Proxmox deployment
 
 # Utilities
 ./ozzy list                     # List available changesets

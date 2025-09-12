@@ -211,6 +211,49 @@ def build_complete_efi_structure(changeset_name, force_rebuild=False):
             return False
         log("✓ Configuration passed ocvalidate")
     
+    # Clean up any previous changeset files
+    efi_root = target_dir.parent
+    oc_dir = target_dir / 'OC'
+    
+    # Remove previous changeset touch files in EFI root
+    try:
+        for item in efi_root.iterdir():
+            if item.is_file() and not item.name.startswith('.') and item.suffix == '':
+                # This is likely a changeset touch file
+                item.unlink()
+                log(f"Removed previous changeset identifier: {item.name}")
+    except Exception as e:
+        warn(f"Failed to clean previous changeset identifiers: {e}")
+    
+    # Remove previous changeset YAML files in OC directory
+    try:
+        for item in oc_dir.glob('*.yaml'):
+            if item.name != 'config.plist':  # Safety check
+                item.unlink()
+                log(f"Removed previous changeset YAML: {item.name}")
+    except Exception as e:
+        warn(f"Failed to clean previous changeset YAML files: {e}")
+    
+    # Copy changeset YAML file to EFI/OC directory
+    changeset_yaml_path = paths['changesets'] / f"{changeset_name}.yaml"
+    target_changeset_path = target_dir / 'OC' / f"{changeset_name}.yaml"
+    try:
+        if changeset_yaml_path.exists():
+            shutil.copy2(changeset_yaml_path, target_changeset_path)
+            log(f"✓ Copied changeset file to EFI/OC: {changeset_name}.yaml")
+        else:
+            warn(f"Changeset YAML file not found: {changeset_yaml_path}")
+    except Exception as e:
+        warn(f"Failed to copy changeset YAML file: {e}")
+    
+    # Create changeset identifier file in EFI root
+    changeset_file = target_dir.parent / changeset_name
+    try:
+        changeset_file.touch()
+        log(f"✓ Created changeset identifier: {changeset_file.name}")
+    except Exception as e:
+        warn(f"Failed to create changeset identifier file: {e}")
+    
     log("✓ Complete EFI structure built successfully")
     return True
 
