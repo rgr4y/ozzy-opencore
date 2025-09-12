@@ -37,18 +37,24 @@ The applied changeset makes several AMD-specific optimizations:
 ## Quick Reference
 
 ```bash
+```bash
 # Essential workflow
 ./ozzy fetch                                    # Download OpenCore assets
 ./ozzy apply ryzen3950x_rx580_AMDVanilla       # Apply your changeset
-./ozzy serial --changeset ryzen3950x_rx580_AMDVanilla --force  # Generate unique serials
-./ozzy usb --changeset ryzen3950x_rx580_AMDVanilla            # Create USB installer
-./ozzy proxmox --changeset ryzen3950x_rx580_AMDVanilla        # Deploy to VM
+./ozzy generate-serial ryzen3950x_rx580_AMDVanilla --force    # Generate unique serials
+./ozzy build-usb ryzen3950x_rx580_AMDVanilla   # Create USB installer
+./ozzy full-deploy ryzen3950x_rx580_AMDVanilla # Build IMG and deploy to VM
+
+# Complete workflows
+./ozzy full-usb ryzen3950x_rx580_AMDVanilla    # Changeset → USB in one command
+./ozzy full-deploy ryzen3950x_rx580_AMDVanilla --iso  # Deploy ISO instead of IMG
 
 # Maintenance
 ./ozzy status                                   # Check project status
 ./ozzy list                                     # List available changesets
 ./ozzy clean                                    # Clean build outputs
-./ozzy setupenv                                 # Fix Python environment
+./ozzy test                                     # Run integration tests
+./ozzy setup-env                                # Fix Python environment
 ```
 
 ## Next Steps

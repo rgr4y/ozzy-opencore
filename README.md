@@ -80,13 +80,16 @@ Before deploying, you need valid SMBIOS serial numbers. The system can generate 
 
 ```bash
 # Generate SMBIOS data for a changeset (automatic detection of placeholders)
-./ozzy serial --changeset ryzen3950x_rx580_AMDVanilla
+./ozzy generate-serial ryzen3950x_rx580_AMDVanilla
 
 # Force generation of new SMBIOS data
-./ozzy serial --changeset ryzen3950x_rx580_AMDVanilla --force
+./ozzy generate-serial ryzen3950x_rx580_AMDVanilla --force
 
-# Generate with specific model (advanced usage)
-./ozzy smbios ryzen3950x_rx580_AMDVanilla
+# Generate only serial numbers and MLB (skip ROM/UUID)
+./ozzy generate-serial ryzen3950x_rx580_AMDVanilla --serial-only
+
+# Generate only ROM and UUID (keep existing serial/MLB)
+./ozzy generate-serial ryzen3950x_rx580_AMDVanilla --rom-uuid-only
 ```
 
 The script automatically:
@@ -189,41 +192,50 @@ The `ozzy` script provides a unified interface for all operations:
 # Core Operations
 ./ozzy fetch                    # Download OpenCore + kexts
 ./ozzy apply <changeset>        # Apply changeset to generate config.plist
-./ozzy serial --changeset <changeset>  # Generate SMBIOS serial numbers
+./ozzy generate-serial <changeset>  # Generate SMBIOS serial numbers
+./ozzy generate-smbios <changeset>  # Generate complete SMBIOS data (serial, MLB, UUID, ROM)
 ./ozzy validate                 # Validate current OpenCore configuration
 
 # Build & Deploy
 ./ozzy full-usb <changeset>     # Complete USB workflow
 ./ozzy full-deploy <changeset>  # Build IMG and deploy to Proxmox VM
-./ozzy usb --changeset <changeset>  # Create USB EFI structure
-./ozzy iso                      # Build OpenCore ISO
-./ozzy proxmox --changeset <changeset>  # Legacy Proxmox deployment
+./ozzy build-usb <changeset>    # Create USB EFI structure
+./ozzy build-iso                # Build OpenCore ISO
+./ozzy switch <changeset>       # Switch to different changeset
 
 # Utilities
 ./ozzy list                     # List available changesets
 ./ozzy clean                    # Clean output directories
 ./ozzy status                   # Show project status
-./ozzy setupenv                 # Set up Python environment
-./ozzy --help                   # Show all commands
+./ozzy setup-env                # Set up Python environment
+./ozzy test                     # Run integration test suite
+./ozzy mount-efi                # Mount EFI partition from Install USB
+./ozzy read-config <config.plist> --output <changeset.yaml>  # Convert config to changeset
 ```
 
-### Advanced Operations
+### Advanced Examples
 
 ```bash
-# Kext Management
-python3 scripts/fetch-assets.py  # Download kexts with DEBUG/RELEASE selection
+# Serial number generation options
+./ozzy generate-serial myconfig --force                 # Force regenerate all
+./ozzy generate-serial myconfig --serial-only           # Only serial/MLB
+./ozzy generate-serial myconfig --rom-uuid-only         # Only ROM/UUID
+./ozzy generate-smbios myconfig                         # Generate complete SMBIOS data
 
-# Direct Changeset Application
-python3 scripts/apply-changeset.py <changeset> --dry-run  # Preview changes
-python3 scripts/apply-changeset.py <changeset>           # Apply changes
+# Full deployment options
+./ozzy full-deploy myconfig --force                     # Force rebuild
+./ozzy full-deploy myconfig --build-only                # Build without deploy
+./ozzy full-deploy myconfig --iso                       # Use ISO instead of IMG
+./ozzy full-deploy myconfig --iso-only                  # Skip changeset, just build/deploy
 
-# Build Workflows
-python3 workflows/full-usb.py <changeset> --force       # Force rebuild USB
-python3 workflows/switch-changeset.py <old> <new>       # Switch configurations
+# USB creation options
+./ozzy full-usb myconfig --output ./usb                 # Custom output directory
+./ozzy build-usb myconfig --output /Volumes/EFI         # Direct to mounted USB
 
-# Configuration Management
-python3 scripts/validate-config.py    # Validate OpenCore config
-python3 scripts/read-config.py        # Read current config details
+# Configuration management
+./ozzy read-config ./path/to/config.plist --output myconfig.yaml  # Convert to changeset
+./ozzy apply myconfig && ./ozzy build-iso               # Apply then build ISO
+./ozzy switch testconfig                                 # Switch for testing
 ```
 
 ## Project Structure
@@ -324,7 +336,7 @@ ls -la out/kext-*
 **Invalid SMBIOS serials:**
 ```bash
 # Force regenerate serial numbers
-./ozzy serial --changeset ryzen3950x_rx580_AMDVanilla --force
+./ozzy generate-serial ryzen3950x_rx580_AMDVanilla --force
 ```
 
 **Debug verbose boot:**
@@ -343,80 +355,3 @@ The changeset includes comprehensive debug settings:
 ## License
 
 This project is open source. Use at your own risk for educational purposes.
-
-## Common Usages
-
-./scripts/fetch-assets.py
-
-Patch your OpenCore config from a declarative change-set (dry-run first):
-
-./scripts/apply_changeset.py config/changesets/ryzen3950x_rx580_mac.yaml --dry-run
-./scripts/apply_changeset.py config/changesets/ryzen3950x_rx580_mac.yaml
-
-Validate (macOS binary from the OC release):
-
-./scripts/validate.sh
-
-Build the ISOs (macOS hdiutil; Linux fallback uses xorriso):
-
-./bin/build_isos.sh
-
-# creates:
-
-# out/opencore.iso (normal OC)
-
-# out/opencore-resetnvram.iso (boots ResetNvramEntry.efi directly)
-
-One-command push to Proxmox and boot:
-
-# normal flow
-
-./bin/deploy.sh
-
-# or if you want a one-time NVRAM wipe first:
-
-./bin/deploy.sh --nvram-reset
-
-What deploy does:
-
-SCP out/opencore.iso → /var/lib/vz/template/iso/opencore-osx-proxmox-vm.iso
-
-(if --nvram-reset) also SCP reset ISO → /var/lib/vz/template/iso/opencore-resetnvram.iso
-
-Copy vm/100.conf → /etc/pve/qemu-server/100.conf (atomic replace)
-
-Ensures installer line exists: ide2: local:iso/macOS-Sequoia-15.4.iso,cache=unsafe
-
-If --nvram-reset: start VM with the reset ISO for ~12s, stop, swap back to OC ISO, start again
-
-Otherwise: start VM with OC ISO directly
-
-Notes mapped to your constraints
-
-No sudo (Proxmox runs as root). All remote commands assume key-based SSH for root@10.0.1.10.
-
-Single source of truth: config/deploy.env holds REMOTE_SSH_HOST, REMOTE_VM_ID, ISO store path, names.
-
-Installer ISO is assumed present at /var/lib/vz/template/iso/macOS-Sequoia-15.4.iso (matches your conf).
-
-NVRAM reset option: uses a special ISO where BOOTx64.efi == ResetNvramEntry.efi. Deploy does a quick boot with it, then switches back to the normal OC ISO—no manual picker step.
-
-Your baseline config.plist: used as the starting template (from your upload). The change-set only adds the minimal Sequoia/RX580 deltas; doesn’t fight your existing structure.
-
-Validation rules respected: csr-active-config is 4-byte data; DisableLinkeditJettison=True when Lilu is present; OpenRuntime.efi ensured when ProvideCustomSlide=True; paths are short/ASCII-safe.
-
-Edit points you’ll tweak most
-
-config/deploy.env – remote host, VMID, ISO names.
-
-config/changesets/ryzen3950x_rx580_mac.yaml – toggle SMBIOS, boot-args, add/remove kexts/tools/quirks.
-
-vm/100.conf – the Proxmox VM template; deploy replaces /etc/pve/qemu-server/100.conf with this.
-
-Sanity vs. your 100.conf
-
-Leaves your passthrough lines untouched (0b:00.{0,1}, 03:00.0, 07:00.3).
-
-Keeps vga: none, q35, ovmf, agent:1, balloon:0.
-
-CPU line is still Penryn,vendor=GenuineIntel,+aes per your file. If you want to switch to -cpu Haswell-noTSX,... style via args:, I can add a small templater to flip this declaratively.
