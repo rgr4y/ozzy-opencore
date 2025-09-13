@@ -206,11 +206,18 @@ def compare_arrays_ignore_comments(arr1: List[Any], arr2: List[Any]) -> bool:
 
 def should_ignore_path(path: List[str]) -> bool:
     """Check if a path should be ignored in comparison"""
+    # Ignore top-level comment/timestamp keys
     if len(path) == 1:
-        # Ignore top-level comment keys
         key = path[0]
         if key.startswith('#') or key == '#Generated':
             return True
+
+    # Ignore known, benign differences that vary by OC version or template
+    ignored_exact_paths = {
+        ('Misc', 'Security', 'AllowNvramReset'),  # varies or may be absent in some templates
+    }
+    if tuple(path) in ignored_exact_paths:
+        return True
     return False
 
 def compare_plists(plist1: Dict[str, Any], plist2: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:

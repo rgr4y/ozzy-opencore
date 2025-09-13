@@ -76,7 +76,7 @@ class PathManager:
     @property
     def usb_build(self) -> Path:
         """USB build directory"""
-        return self.out / "usb"
+        return self.build_root / "usb"
     
     @property
     def iso_build(self) -> Path:
@@ -150,12 +150,12 @@ class PathManager:
     @property
     def opencore_iso(self) -> Path:
         """Generated OpenCore ISO file"""
-        return self.out / "opencore.iso"
+        return self.build_root / "opencore.iso"
     
     @property
     def reset_nvram_iso(self) -> Path:
         """Generated Reset NVRAM ISO file"""
-        return self.out / "reset-nvram.iso"
+        return self.build_root / "reset-nvram.iso"
     
     # USB specific paths
     

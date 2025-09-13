@@ -18,16 +18,16 @@ from lib import (
     ROOT, log, warn, error, info,
     load_config, run_command, 
     ensure_directory, cleanup_macos_metadata,
-    validate_file_exists, get_project_paths,
+    validate_file_exists,
     load_changeset, save_changeset,
     validate_and_generate_smbios, list_changeset_kexts,
-    get_changeset_path, build_complete_efi_structure, validate_changeset_exists
+    get_changeset_path, build_complete_efi_structure, validate_changeset_exists,
+    paths as pm,
 )
 
 def validate_required_kexts(changeset_name, output_dir):
     """Validate that all kexts specified in changeset are present"""
-    paths = get_project_paths()
-    kexts_dir = paths['efi_oc'] / 'Kexts'
+    kexts_dir = pm.oc_efi / 'Kexts'
     
     if not kexts_dir.exists():
         error(f"Kexts directory not found: {kexts_dir}")
@@ -64,11 +64,10 @@ def create_usb_efi(changeset_name, output_dir=None, force_rebuild=False, dry_run
     except FileNotFoundError:
         return False
     
-    paths = get_project_paths()
-    
     # Set default output directory
     if output_dir is None:
-        output_dir = paths['usb_efi']
+        # Default to PathManager USB build directory
+        output_dir = pm.usb_build
     else:
         output_dir = Path(output_dir)
     
@@ -107,7 +106,7 @@ def create_usb_efi(changeset_name, output_dir=None, force_rebuild=False, dry_run
                 return False
     
     # Validate source EFI structure
-    source_efi = paths['out'] / 'build' / 'efi' / 'EFI'
+    source_efi = pm.efi_build / 'EFI'
     validate_file_exists(source_efi, "Source EFI structure")
     validate_file_exists(source_efi / 'OC' / 'config.plist', "OpenCore configuration")
     
@@ -129,6 +128,12 @@ def create_usb_efi(changeset_name, output_dir=None, force_rebuild=False, dry_run
     log("Copying EFI structure...")
     try:
         shutil.copytree(source_efi, output_dir / 'EFI', dirs_exist_ok=True)
+        # Copy changeset marker(s) to USB root if present
+        for marker in pm.efi_build.glob('*.changeset'):
+            try:
+                shutil.copy2(marker, output_dir)
+            except Exception:
+                pass
     except Exception as e:
         error(f"Failed to copy EFI structure: {e}")
         return False

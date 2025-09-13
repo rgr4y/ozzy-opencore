@@ -40,6 +40,12 @@ build_iso() {
       # Ensure clean state and copy EFI structure
       mkdir -p "$ESP_MOUNT/EFI/BOOT"
       cp -R "$SRC/EFI"/* "$ESP_MOUNT/EFI/"
+      # Copy changeset marker(s) to ESP root if present
+      for marker in "$SRC"/*.changeset; do
+        if [[ -f "$marker" ]]; then
+          cp "$marker" "$ESP_MOUNT/"
+        fi
+      done
       # Unmount ESP
       hdiutil detach "$ESP_MOUNT" >/dev/null
     else
@@ -48,6 +54,12 @@ build_iso() {
       sudo mount -o loop "$EFI_IMG" "$ESP_TEMP"
       mkdir -p "$ESP_TEMP/EFI/BOOT"
       cp -R "$SRC/EFI"/* "$ESP_TEMP/EFI/"
+      # Copy changeset marker(s) to ESP root if present
+      for marker in "$SRC"/*.changeset; do
+        if [[ -f "$marker" ]]; then
+          cp "$marker" "$ESP_TEMP/"
+        fi
+      done
       sudo umount "$ESP_TEMP"
       rmdir "$ESP_TEMP"
     fi
@@ -93,6 +105,6 @@ build_iso() {
   fi
 }
 # Normal OC ISO
-build_iso "$EFI_BUILD" "$OUT/opencore.iso" "OZZY_ISO"
+build_iso "$EFI_BUILD" "$BUILD/opencore.iso" "OZZY_ISO"
 
-echo "[*] ISO created at $OUT/opencore.iso"
+echo "[*] ISO created at $BUILD/opencore.iso"

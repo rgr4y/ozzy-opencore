@@ -450,128 +450,27 @@ def cmd_test(args):
     return run_script(test_runner, [], "Test suite")
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='Ozzy - OpenCore Remote Deploy Master Script',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Core Commands:
-  apply              Apply a changeset to OpenCore configuration
-  build-iso          Build OpenCore ISO
-  build-usb          Build USB EFI structure
-  validate           Validate OpenCore configuration
+    """Thin command runner that delegates to scripts/workflows.
 
-Workflow Commands (Main Use Cases):
-  full-usb           Changeset → ISO → USB in one command
-  full-deploy        Changeset → IMG → Proxmox in one command
-  switch             Switch to different changeset for testing
+    Help for script-backed commands is shown by the scripts themselves.
+    """
+    # Map commands to underlying scripts/workflows
+    script_commands = {
+        # Core
+        'apply': ROOT / 'scripts' / 'apply-changeset.py',
+        'build-iso': ROOT / 'scripts' / 'build-iso.py',
+        'build-usb': ROOT / 'scripts' / 'build-usb.py',
+        'validate': ROOT / 'scripts' / 'validate-config.py',
+        'generate-smbios': ROOT / 'scripts' / 'generate-serial.py',
+        'generate-serial': ROOT / 'scripts' / 'generate-serial.py',
+        'read-config': ROOT / 'scripts' / 'read-config.py',
+        # Workflows
+        'full-usb': ROOT / 'workflows' / 'full-usb.py',
+        'full-deploy': ROOT / 'workflows' / 'full-deploy.py',
+        'switch': ROOT / 'workflows' / 'switch-changeset.py',
+    }
 
-Utility Commands:
-  generate-smbios    Generate SMBIOS data for changeset (serial, MLB, UUID, ROM)
-  generate-serial    Generate serial numbers and UUIDs (supports --serial-only and --rom-uuid-only)
-  read-config        Convert existing config.plist to changeset format
-  fetch              Fetch OpenCore assets
-  clean              Clean output directories
-  setup-env          Set up Python environment
-  status             Show project status
-  list               List available changesets
-  test               Run integration test suite
-
-Examples:
-  ./ozzy full-usb myconfig --output ./usb
-  ./ozzy full-deploy myconfig --force
-  ./ozzy full-deploy myconfig --build-only
-  ./ozzy full-deploy myconfig --iso
-  ./ozzy full-deploy myconfig --iso-only  # Skip changeset apply, just build & deploy
-  ./ozzy switch testconfig
-  ./ozzy generate-serial myconfig --force
-  ./ozzy generate-serial myconfig --serial-only  # Only regenerate serial/MLB
-  ./ozzy generate-serial myconfig --rom-uuid-only  # Only regenerate ROM/UUID
-  ./ozzy read-config ./path/to/config.plist --output myconfig.yaml
-  ./ozzy apply myconfig && ./ozzy build-iso
-        """
-    )
-    
-    subparsers = parser.add_subparsers(dest='command', help='Available commands')
-    
-    # Core commands
-    apply_parser = subparsers.add_parser('apply', help='Apply changeset')
-    apply_parser.add_argument('changeset', help='Changeset name (without .yaml)')
-    
-    build_iso_parser = subparsers.add_parser('build-iso', help='Build ISO')
-    build_iso_parser.add_argument('changeset', help='Changeset name (without .yaml)')
-    build_iso_parser.add_argument('--force', '-f', action='store_true', help='Force rebuild')
-    build_iso_parser.add_argument('--no-validate', action='store_true', help='Skip validation')
-    
-    build_usb_parser = subparsers.add_parser('build-usb', help='Build USB')
-    build_usb_parser.add_argument('changeset', help='Changeset name (without .yaml)')
-    build_usb_parser.add_argument('--output', '-o', help='Output directory')
-    build_usb_parser.add_argument('--force', '-f', action='store_true', help='Force rebuild')
-    
-    validate_parser = subparsers.add_parser('validate', help='Validate config')
-    validate_parser.add_argument('config', nargs='?', help='Config file path')
-    
-    smbios_parser = subparsers.add_parser('generate-smbios', help='Generate SMBIOS')
-    smbios_parser.add_argument('changeset', help='Changeset name (without .yaml)')
-    smbios_parser.add_argument('--force', '-f', action='store_true', help='Force generation even if values are not placeholders')
-    
-    # Serial generation command
-    serial_parser = subparsers.add_parser('generate-serial', help='Generate serial numbers')
-    serial_parser.add_argument('changeset', nargs='?', help='Changeset name (without .yaml)')
-    serial_parser.add_argument('--force', '-f', action='store_true', help='Force regeneration')
-    serial_parser.add_argument('--list', '-l', action='store_true', help='List existing serials')
-    serial_parser.add_argument('--serial-only', '-s', action='store_true', help='Only regenerate serial and MLB')
-    serial_parser.add_argument('--rom-uuid-only', '-r', action='store_true', help='Only regenerate ROM and UUID')
-    
-    # Config reading command
-    read_config_parser = subparsers.add_parser('read-config', help='Convert config.plist to changeset')
-    read_config_parser.add_argument('config', help='Path to config.plist file')
-    read_config_parser.add_argument('--output', '-o', help='Output changeset file')
-    
-    # Workflow commands
-    full_usb_parser = subparsers.add_parser('full-usb', help='Full USB workflow')
-    full_usb_parser.add_argument('changeset', help='Changeset name (without .yaml)')
-    full_usb_parser.add_argument('--output', '-o', help='Output directory')
-    full_usb_parser.add_argument('--force', '-f', action='store_true', help='Force rebuild')
-    full_usb_parser.add_argument('--eject', action='store_true', help='Automatically eject EFI and Install volumes')
-    
-    full_deploy_parser = subparsers.add_parser('full-deploy', help='Build IMG and deploy to Proxmox VM')
-    full_deploy_parser.add_argument('changeset', help='Changeset name (without .yaml)')
-    full_deploy_parser.add_argument('--force', '-f', action='store_true', help='Force rebuild of IMG/ISO')
-    full_deploy_parser.add_argument('--build-only', '-b', action='store_true', help='Build only, do not deploy')
-    full_deploy_parser.add_argument('--iso-only', '-i', action='store_true', help='Skip fetch/apply/validation, build ISO and deploy only')
-    full_deploy_parser.add_argument('--iso', action='store_true', help='Build ISO instead of IMG (default is IMG)')
-    
-    switch_parser = subparsers.add_parser('switch', help='Switch changeset')
-    switch_parser.add_argument('changeset', help='Changeset name (without .yaml)')
-    switch_parser.add_argument('--force', '-f', action='store_true', help='Skip confirmation')
-    
-    # Utility commands
-    fetch_parser = subparsers.add_parser('fetch', help='Fetch assets')
-    clean_parser = subparsers.add_parser('clean', help='Clean outputs')
-    setup_parser = subparsers.add_parser('setup-env', help='Setup environment')
-    status_parser = subparsers.add_parser('status', help='Show status')
-    list_parser = subparsers.add_parser('list', help='List changesets')
-    mount_efi_parser = subparsers.add_parser('mount-efi', help='Mount EFI partition from Install USB')
-    test_parser = subparsers.add_parser('test', help='Run integration test suite')
-    
-    args, unknown_args = parser.parse_known_args()
-    
-    if not args.command:
-        parser.print_help()
-        return 1
-    
-    # Command mapping
-    commands = {
-        'apply': cmd_apply,
-        'build-iso': cmd_build_iso,
-        'build-usb': cmd_build_usb,
-        'validate': cmd_validate,
-        'generate-smbios': cmd_generate_smbios,
-        'generate-serial': cmd_generate_serial,
-        'read-config': cmd_read_config,
-        'full-usb': cmd_full_usb,
-        'full-deploy': cmd_full_deploy,
-        'switch': cmd_switch,
+    builtin_commands = {
         'fetch': cmd_fetch,
         'clean': cmd_clean,
         'setup-env': cmd_setup_env,
@@ -580,28 +479,46 @@ Examples:
         'mount-efi': cmd_mount_efi,
         'test': cmd_test,
     }
-    
-    cmd_func = commands.get(args.command)
-    if not cmd_func:
-        error(f"Unknown command: {args.command}")
+
+    argv = sys.argv[1:]
+    if not argv or argv[0] in ('-h', '--help'):
+        # Minimal top-level help without duplicating per-script usage
+        print("Usage: ./ozzy <command> [args]\n")
+        print("Script-backed commands (use --help on them):")
+        for name in sorted(script_commands.keys()):
+            print(f"  {name}")
+        print("\nBuilt-in commands:")
+        for name in sorted(builtin_commands.keys()):
+            print(f"  {name}")
+        print("\nExamples:\n  ./ozzy full-deploy myconfig --force\n  ./ozzy build-iso myconfig --no-validate\n  ./ozzy build-usb myconfig --output ./usb\n  ./ozzy generate-serial myconfig --serial-only\n  ./ozzy read-config ./config.plist --output my.yaml\n  ./ozzy <command> --help  # Show script-specific help")
+        return 0
+
+    command = argv[0]
+    rest = argv[1:]
+
+    # Dispatch to built-in commands
+    if command in builtin_commands:
+        try:
+            return 0 if builtin_commands[command](argparse.Namespace()) else 1
+        except KeyboardInterrupt:
+            warn("Operation cancelled by user")
+            return 1
+        except Exception as e:
+            error(f"Command failed: {e}")
+            return 1
+
+    # Dispatch to script-backed commands
+    script_path = script_commands.get(command)
+    if not script_path:
+        error(f"Unknown command: {command}")
+        info("Run './ozzy --help' to see available commands")
         return 1
-    
-    try:
-        # For apply command, pass through unknown arguments
-        if args.command == 'apply':
-            success = cmd_func(args, unknown_args)
-        else:
-            # For other commands, warn about unknown arguments
-            if unknown_args:
-                warn(f"Unknown arguments ignored: {' '.join(unknown_args)}")
-            success = cmd_func(args)
-        return 0 if success else 1
-    except KeyboardInterrupt:
-        warn("Operation cancelled by user")
-        return 1
-    except Exception as e:
-        error(f"Command failed: {e}")
-        return 1
+
+    # If no args for a script-backed command, show that script's help
+    if len(rest) == 0:
+        rest = ['--help']
+
+    return 0 if run_script(script_path, rest, f"{command}") else 1
 
 if __name__ == '__main__':
     sys.exit(main())

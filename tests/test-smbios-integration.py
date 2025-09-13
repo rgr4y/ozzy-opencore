@@ -26,6 +26,7 @@ def run_command(cmd, description, cwd=None):
         cwd = ROOT
     
     log(f"Running: {' '.join(cmd)}")
+    reverse_changeset_file = None
     try:
         result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=True)
         return True, result.stdout, result.stderr
@@ -71,6 +72,7 @@ def test_smbios_nvram_integration():
         ]
         success, stdout, stderr = run_command(cmd, "Apply changeset")
         if not success:
+            # Stop early; print captured output to help diagnose
             return False
         
         # Check if NVRAM copying was mentioned in output
@@ -146,7 +148,7 @@ def test_smbios_nvram_integration():
     finally:
         # Clean up test files
         for cleanup_file in [test_changeset_file, reverse_changeset_file]:
-            if cleanup_file.exists():
+            if cleanup_file and cleanup_file.exists():
                 cleanup_file.unlink()
                 info(f"Cleaned up: {cleanup_file}")
 

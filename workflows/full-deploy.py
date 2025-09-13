@@ -13,13 +13,16 @@ from pathlib import Path
 
 # Import our common libraries
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from lib import ROOT, log, warn, error, info, run_command, load_config, get_remote_config, scp, ssh, list_newest_changesets
+from lib import ROOT, log, warn, error, info, run_command, load_config, get_remote_config, scp, ssh, list_newest_changesets, paths as pm, cleanup_macos_metadata
+from lib.efi_builder import build_iso_artifact, build_img_artifact, build_efi_then_validate
 
-def full_deploy_workflow(changeset_name, force=False, build_only=False, iso_only=False, use_iso=False):
+def full_deploy_workflow(changeset_name, force=False, build_only=False, iso_only=False, use_iso=False, local_efi=False):
     """Execute the full deployment workflow: changeset → IMG/ISO → Proxmox"""
     
     build_type = "ISO" if use_iso else "IMG"
     log(f"Starting full deployment workflow for changeset: {changeset_name} (building {build_type})")
+    if local_efi:
+        info("Local EFI deployment enabled: will deploy to mounted EFI and skip Proxmox")
     
     if iso_only or build_only:
         mode_desc = "ISO-only" if iso_only else "Build-only"
@@ -47,26 +50,24 @@ def full_deploy_workflow(changeset_name, force=False, build_only=False, iso_only
             error(f"Failed to apply changeset: {e}")
             return False
     
-    # Step 2: Build IMG or ISO
-    step_num = "1/2" if iso_only else "2/3"
-    log(f"Step {step_num}: Building OpenCore {build_type}...")
-    
-    if use_iso:
-        build_script = ROOT / "scripts" / "build-iso.py"
+    # Step 2: Build artifacts or just EFI for local deployment
+    if local_efi:
+        log("Step 2/2: Building EFI (no artifact) for local deployment...")
+        # If we already applied above, don't apply again inside builder
+        applied_already = not (iso_only or build_only)
+        if not build_efi_then_validate(changeset_name, force_rebuild=force, no_validate=False, apply_changeset=not applied_already):
+            return False
+        # Deploy locally and finish
+        return deploy_to_local_efi(changeset_name)
     else:
-        build_script = ROOT / "scripts" / "build-img.py"
-    
-    cmd = [sys.executable, str(build_script), changeset_name]
-
-    if force:
-        cmd.append("--force")
-    
-    try:
-        result = subprocess.run(cmd, cwd=ROOT, check=True)
+        step_num = "1/2" if iso_only else "2/3"
+        log(f"Step {step_num}: Building OpenCore {build_type}...")
+        applied_already = not (iso_only or build_only)
+        built = build_iso_artifact(changeset_name, force_rebuild=force, no_validate=False, apply_changeset=not applied_already) if use_iso \
+            else build_img_artifact(changeset_name, force_rebuild=force, no_validate=False, apply_changeset=not applied_already)
+        if not built:
+            return False
         log(f"✓ {build_type} built successfully")
-    except subprocess.CalledProcessError as e:
-        error(f"Failed to build {build_type}: {e}")
-        return False
     
     if build_only:
         log("Build-only mode: Skipping deployment")
@@ -107,176 +108,119 @@ def deploy_img(changeset_name, vmid, config):
     try:
         # Check that IMG file exists
         img_filename = f'opencore-{changeset_name}.img'
-        img_path = ROOT / 'out' / img_filename
-        
+        img_path = pm.build_root / img_filename
+
         if not img_path.exists():
             error(f"IMG file not found: {img_path}")
             error("Please build the IMG first using build-img.py")
             return False
-            
+
         log(f"Found IMG file: {img_path}")
-        
+
         # Copy IMG to /tmp on remote host
         temp_img_path = f"/tmp/{img_filename}"
         info(f"Copying IMG to {config['host']}:{temp_img_path}")
-        
+
         if not scp(img_path, temp_img_path):
             error("Failed to copy IMG to remote host")
             return False
-            
+
         log("IMG copied to temporary location")
-        
+
         # Deploy to VM via SSH
         info(f"Deploying IMG to VM {vmid}")
-        
+
         # Stop the VM
         info(f"Stopping VM {vmid}")
         if not ssh(f"qm stop {vmid}"):
             warn(f"Could not stop VM {vmid} (may already be stopped)")
-        
-        try:
-            # Create disk name (strip .img and add .raw)
-            disk_name = f"opencore-{changeset_name}.raw"
-            
-            # Use pvesm alloc to create/ensure managed disk exists
-            log(f"Allocating managed disk: {disk_name}")
-            result = subprocess.run(
-                ['ssh', f"{config['user']}@{config['host']}", f"pvesm alloc local {vmid} {disk_name} 150M --format raw"],
-                capture_output=True, text=True, check=False
-            )
-            
-            if result.returncode == 0:
-                # Parse the output to get the disk path
-                output_lines = result.stdout.strip().split('\n')
-                disk_path = None
-                disk_ref = None
-                
-                for line in output_lines:
-                    if "Formatting" in line and "fmt=raw" in line:
-                        # Extract path from: "Formatting '/var/lib/vz/images/100/opencore-test.raw', fmt=raw size=157286400"
-                        start = line.find("'") + 1
-                        end = line.find("'", start)
-                        if start > 0 and end > start:
-                            disk_path = line[start:end]
-                    elif "successfully created" in line:
-                        # Extract reference from: "successfully created 'local:100/opencore-test.raw'"
-                        start = line.find("'") + 1
-                        end = line.find("'", start)
-                        if start > 0 and end > start:
-                            disk_ref = line[start:end]
-                
-                if disk_path:
-                    log(f"Created new disk at: {disk_path}")
-                else:
-                    error(f"Could not determine disk path from pvesm output: {result.stdout}")
-                    return False
-                    
-                # Set disk_ref if not already set
-                if not disk_ref:
-                    disk_ref = f"local:{vmid}/{disk_name}"
-                    
-            elif "already exists" in result.stderr:
-                # Disk already exists, that's fine - we'll overwrite it
-                disk_path = f"/var/lib/vz/images/{vmid}/{disk_name}"
-                disk_ref = f"local:{vmid}/{disk_name}"
-                log(f"Disk already exists, will overwrite: {disk_path}")
-            else:
-                error(f"Failed to allocate disk: {result.stderr}")
-                return False
-            
-            # Copy our IMG to the allocated disk
-            log(f"Copying IMG to managed disk: {disk_path}")
-            if not ssh(f"cp {temp_img_path} {disk_path}"):
-                error("Failed to copy IMG to managed disk")
-                return False
-                
-            log("IMG successfully copied to managed disk")
-            
-            # Configure VM to use the disk
-            log(f"Configuring VM {vmid} to use disk: {disk_ref}")
-            if not ssh(f"qm set {vmid} --ide0 {disk_ref},format=raw,cache=writeback,media=disk"):
-                error("Failed to configure VM")
-                return False
-                
-            log("VM configured successfully")
-            
-        finally:
-            # Clean up temporary file
-            log("Cleaning up temporary IMG file...")
-            ssh(f"rm -f {temp_img_path}")  # Don't fail if cleanup fails
-        
-        # Start the VM
-        info(f"Starting VM {vmid}")
-        if not ssh(f"qm start {vmid}"):
-            error("Failed to start VM")
+
+        # Run all VM-side operations in a single SSH session for fewer round-trips
+        disk_name = f"opencore-{changeset_name}.raw"
+        remote_script = f"""
+            set -e
+            echo "Stopping VM {vmid} (ignore if already stopped)" || true
+            qm stop {vmid} || true
+            echo "Allocating managed disk: {disk_name}"
+            if ! pvesm alloc local {vmid} {disk_name} 150M --format raw; then
+              echo "Disk may already exist, proceeding"
+            fi
+            echo "Resolving disk path"
+            DISK_REF="local:{vmid}/{disk_name}"
+            DISK_PATH=$(pvesm path "$DISK_REF")
+            echo "Copying image to $DISK_PATH"
+            cp {temp_img_path} "$DISK_PATH"
+            echo "Configuring VM to use disk"
+            qm set {vmid} --ide0 "$DISK_REF",format=raw,cache=writeback,media=disk
+            echo "Cleaning up temp image"
+            rm -f {temp_img_path} || true
+            echo "Starting VM {vmid}"
+            qm start {vmid}
+        """.strip()
+        if not ssh(f"bash -lc {sh_quote(remote_script)}"):
+            error("Remote deployment script failed")
             return False
-            
+
         log(f"VM {vmid} started successfully with IMG")
         return True
-        
+
     except Exception as e:
         error(f"IMG deployment failed: {e}")
         # Try to cleanup temp file on error
         try:
             ssh(f"rm -f /tmp/{img_filename}")
-        except:
+        except Exception:
             pass
         return False
 
 def deploy_iso(changeset_name, vmid, config):
     """Deploy ISO file to Proxmox VM via SSH"""
     try:
-        # Check that ISO file exists
+        # Check that ISO file exists (support generic default)
         iso_filename = f'opencore-{changeset_name}.iso'
-        iso_path = ROOT / 'out' / iso_filename
-        
+        iso_path = pm.opencore_iso if pm.opencore_iso.exists() else (pm.build_root / iso_filename)
+
         if not iso_path.exists():
-            # Also check for just opencore.iso
-            generic_iso = ROOT / 'out' / 'opencore.iso'
-            if generic_iso.exists():
-                iso_filename = 'opencore.iso'
-                iso_path = generic_iso
-                log(f"Found generic ISO file: {generic_iso}")
-            else:
-                error(f"ISO file not found: {iso_path}")
-                error("Please build the ISO first using build-iso.py")
-                return False
+            error(f"ISO file not found: {iso_path}")
+            error("Please build the ISO first using build-iso.py")
+            return False
         else:
             log(f"Found ISO file: {iso_path}")
-        
+
         # Copy ISO to remote host
         remote_iso_path = f"{config['remote_iso_dir']}/{iso_filename}"
         info(f"Copying ISO to {config['host']}:{remote_iso_path}")
-        
+
         if not scp(iso_path, remote_iso_path):
             error("Failed to copy ISO to remote host")
             return False
-            
+
         log("ISO copied successfully")
-        
+
         # Deploy to VM via SSH
         info(f"Deploying ISO to VM {vmid}")
-        
+
         # Stop the VM
         info(f"Stopping VM {vmid}")
         if not ssh(f"qm stop {vmid}"):
             warn(f"Could not stop VM {vmid} (may already be stopped)")
-        
-        # Configure VM to boot from the ISO
-        log(f"Configuring VM {vmid} to use ISO")
-        if not ssh(f"qm set {vmid} --ide0 {remote_iso_path},media=cdrom"):
-            error("Failed to configure VM")
+
+        # Configure and start VM in a single SSH session
+        remote_script = f"""
+            set -e
+            echo "Stopping VM {vmid} (ignore if already stopped)" || true
+            qm stop {vmid} || true
+            echo "Configuring VM to use ISO"
+            qm set {vmid} --ide0 {remote_iso_path},media=cdrom
+            echo "Starting VM {vmid}"
+            qm start {vmid}
+        """.strip()
+        if not ssh(f"bash -lc {sh_quote(remote_script)}"):
+            error("Remote ISO deployment script failed")
             return False
-            
-        # Start the VM
-        info(f"Starting VM {vmid}")
-        if not ssh(f"qm start {vmid}"):
-            error("Failed to start VM")
-            return False
-            
         log(f"VM {vmid} started successfully with ISO")
         return True
-        
+
     except Exception as e:
         error(f"ISO deployment failed: {e}")
         return False
@@ -311,6 +255,7 @@ Example:
     parser.add_argument('--build-only', '-b', action='store_true', help='Build only, do not deploy')
     parser.add_argument('--iso-only', '-i', action='store_true', help='Skip fetch/apply/validation, build ISO and deploy only')
     parser.add_argument('--iso', action='store_true', help='Build ISO instead of IMG (default is IMG)')
+    parser.add_argument('--local-efi', action='store_true', help='Deploy locally to mounted EFI (inside VM/Hackintosh)')
     
     args = parser.parse_args()
     
@@ -331,7 +276,7 @@ Example:
     use_iso = args.iso or args.iso_only
     
     try:
-        if full_deploy_workflow(args.changeset, args.force, args.build_only, args.iso_only, use_iso):
+        if full_deploy_workflow(args.changeset, args.force, args.build_only, args.iso_only, use_iso, args.local_efi):
             return 0
         else:
             return 1
@@ -341,6 +286,81 @@ Example:
     except Exception as e:
         error(f"Workflow failed: {e}")
         return 1
+
+def sh_quote(s: str) -> str:
+    """Minimal single-arg shell quoting for remote inline scripts."""
+    return "'" + s.replace("'", "'\\''") + "'"
+
+def deploy_to_local_efi(changeset_name: str) -> bool:
+    """Attempt to deploy built EFI to the locally mounted EFI partition.
+
+    Strategy (macOS):
+    - Prefer /Volumes/OZZY-OC if present (label used by our images)
+    - Else try to mount any EFI partitions and detect one with OC/OpenCore.efi
+    """
+    import subprocess, shutil
+    target = Path('/Volumes/OZZY-OC')
+    source_efi = pm.efi_build / 'EFI'
+    if not source_efi.exists():
+        error(f"Source EFI not found: {source_efi}")
+        return False
+    if target.exists():
+        log(f"Deploying to local EFI at {target}")
+        try:
+            # Remove any macOS metadata from source to avoid AppleDouble issues
+            try:
+                cleanup_macos_metadata(source_efi)
+            except Exception:
+                pass
+            # Remove existing EFI folder and copy new, ignoring Apple metadata files
+            if (target / 'EFI').exists():
+                # Some volumes can contain broken AppleDouble entries; ignore deletion errors
+                shutil.rmtree(target / 'EFI', ignore_errors=True)
+            ignore = shutil.ignore_patterns('._*', '__MACOSX', '.DS_Store')
+            shutil.copytree(source_efi, target / 'EFI', ignore=ignore)
+            # Clean up any metadata that slipped through
+            try:
+                cleanup_macos_metadata(target / 'EFI')
+            except Exception:
+                pass
+            # Manage changeset marker at volume root
+            for old in target.glob('*.changeset'):
+                try:
+                    old.unlink()
+                except Exception:
+                    pass
+            marker = target / f"{changeset_name}.changeset"
+            try:
+                marker.touch()
+            except Exception:
+                pass
+            log("✓ Deployed EFI to local volume")
+            return True
+        except Exception as e:
+            error(f"Failed to deploy to local EFI: {e}")
+            return False
+    # Fallback: try to mount common EFI mountpoint
+    # Attempt to mount diskXs1 where X from diskutil list
+    try:
+        result = subprocess.run(['diskutil', 'list'], capture_output=True, text=True)
+        candidates = []
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if line.endswith('EFI') and 'EFI' in line and 'disk' in line:
+                # crude parse: look for diskXs1 pattern in the line
+                parts = line.split()
+                for p in parts:
+                    if p.startswith('disk') and 's' in p:
+                        candidates.append(p)
+        for dev in candidates:
+            subprocess.run(['diskutil', 'mount', dev], capture_output=True)
+        # Retry preferred mount
+        if target.exists():
+            return deploy_to_local_efi(changeset_name)
+    except Exception:
+        pass
+    error("Could not find a mounted EFI volume to deploy to. Use --usb-path via build-usb.py or mount EFI manually.")
+    return False
 
 if __name__ == '__main__':
     sys.exit(main())

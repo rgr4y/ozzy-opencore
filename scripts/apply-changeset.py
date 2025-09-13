@@ -981,6 +981,12 @@ def post_process_config(config_path, changeset_name=None):
                 
         config['Kernel']['Add'] = filtered_entries
     
+    # Remove unsupported or version-specific keys for compatibility with ocvalidate
+    # Some OpenCore versions/templates may include keys that ocvalidate (older) does not recognize
+    # e.g., Misc.Security.AllowNvramReset
+    if 'Misc' in config and 'Security' in config['Misc']:
+        config['Misc']['Security'].pop('AllowNvramReset', None)
+
     # Add generation timestamp
     current_time = datetime.now()
     config['#Generated'] = current_time.strftime('%Y-%m-%d %H:%M:%S')

@@ -13,7 +13,8 @@ from pathlib import Path
 
 # Add lib directory to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
-from common import log, warn, error, info, run_command, get_project_paths
+from common import log, warn, error, info, run_command
+from paths import paths as pm
 
 def find_install_volumes():
     """Find all Install volumes in /Volumes/"""
@@ -116,9 +117,8 @@ def main():
     """Main deployment function"""
     log("Starting USB EFI deployment...")
     
-    # Get project paths
-    paths = get_project_paths()
-    source_efi_path = paths['usb_efi'] / "EFI"
+    # Get source EFI path from centralized PathManager
+    source_efi_path = pm.usb_efi
     
     # Check if source EFI structure exists
     if not source_efi_path.exists():

@@ -50,14 +50,16 @@ def main():
     failed = 0
     
     for test_path, description in tests:
-        if test_path.exists():
-            if run_test(test_path, description):
-                passed += 1
-            else:
-                failed += 1
-        else:
+        if not test_path.exists():
             error(f"Test file not found: {test_path}")
             failed += 1
+            break
+        if run_test(test_path, description):
+            passed += 1
+        else:
+            failed += 1
+            # Fail fast to avoid cascading errors that obscure the root cause
+            break
     
     log("=" * 60)
     log(f"Test Results: {passed} passed, {failed} failed")

@@ -286,10 +286,15 @@ def list_changeset_kexts(changeset_name: str) -> List[Dict[str, str]]:
 
 def validate_kext_availability(changeset_name: str) -> Dict[str, bool]:
     """Check if all kexts in changeset are available in assets"""
-    from common import get_project_paths
-    
-    paths = get_project_paths()
-    kexts_dir = paths['efi_oc'] / 'Kexts'
+    # Prefer centralized PathManager for path handling
+    try:
+        from paths import paths as pm  # works when lib is on sys.path
+        kexts_dir = pm.oc_efi / 'Kexts'
+    except Exception:
+        # Fallback to legacy mapping if paths import fails
+        from common import get_project_paths
+        legacy_paths = get_project_paths()
+        kexts_dir = legacy_paths['efi_oc'] / 'Kexts'
     
     changeset_kexts = list_changeset_kexts(changeset_name)
     availability = {}

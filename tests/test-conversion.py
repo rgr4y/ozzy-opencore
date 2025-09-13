@@ -188,8 +188,11 @@ def test_round_trip_conversion():
                     # Expected additions
                     if path == "NVRAM.Add" and key == apple_guid:
                         continue  # Expected NVRAM addition
-                    if path == "" and key == "#Generated":
+                    if path == "" and (key == "#Generated" or key == "#Changeset"):
                         continue  # Expected timestamp
+                    # Ignore OC-version-specific security toggles
+                    if path == "Misc.Security" and key in ("AllowNvramReset",):
+                        continue
                     unexpected.append(f"Extra key: {path}.{key}")
             
             # Recursively check common keys

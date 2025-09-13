@@ -2,11 +2,9 @@
 """
 EFI Builder Library
 
-Common functions for building complete OpenCore EFI structu    if 'UefiDrivers' in changeset_data:
-        log("Processing UEFI drivers...")
-        
-        # Get drivers from changeset
-        for driver in changeset_data['UefiDrivers']:nsures all components (ACPI, Drivers, Tools, Kexts, etc.) are properly included.
+Common functions for building complete OpenCore EFI structures and packaging
+artifacts. Ensures all components (ACPI, Drivers, Tools, Kexts, etc.) are
+properly included.
 """
 
 import shutil
@@ -15,7 +13,129 @@ import yaml
 import zipfile
 import tempfile
 from pathlib import Path
-from . import ROOT, log, warn, error, info, run_command, get_project_paths, ensure_directory, cleanup_macos_metadata
+import hashlib
+import json
+import yaml
+from . import ROOT, log, warn, error, info, run_command, ensure_directory, cleanup_macos_metadata
+from .paths import paths as pm
+
+def _load_changeset_yaml(changeset_name: str):
+    """Load changeset YAML as a Python dict or return None on error."""
+    cs_path = pm.changesets / f"{changeset_name}.yaml"
+    try:
+        with open(cs_path, 'r') as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        error(f"Failed to load changeset: {e}")
+        return None
+
+
+def _canonical_asset_requirements(changeset_data: dict) -> dict:
+    """Extract a canonical representation of required assets from changeset.
+
+    Includes Kexts/KernelAdd, UefiDrivers, and AcpiAdd lists normalized and sorted.
+    """
+    def _norm_list(x):
+        return sorted(list({str(i).strip() for i in x}))
+
+    req = {
+        'kexts': [],
+        'drivers': [],
+        'acpi': [],
+    }
+    if not isinstance(changeset_data, dict):
+        return req
+
+    # Kexts
+    kexts = (
+        changeset_data.get('Kexts')
+        or changeset_data.get('kexts')
+        or changeset_data.get('KernelAdd')
+        or changeset_data.get('kernel_add')
+        or []
+    )
+    for k in kexts or []:
+        if isinstance(k, dict):
+            bundle = k.get('bundle') or k.get('BundlePath') or ''
+            if bundle:
+                req['kexts'].append(bundle)
+
+    # UEFI Drivers
+    drivers = changeset_data.get('UefiDrivers') or []
+    for d in drivers or []:
+        if isinstance(d, dict):
+            path = d.get('path') or d.get('Path') or ''
+            if path:
+                req['drivers'].append(path)
+
+    # ACPI
+    acpi = changeset_data.get('AcpiAdd') or changeset_data.get('acpi_add') or []
+    for a in acpi or []:
+        # can be a string or dict depending on producer
+        if isinstance(a, str):
+            req['acpi'].append(a)
+        elif isinstance(a, dict):
+            # Some formats use a dict with Path
+            p = a.get('Path') or a.get('path')
+            if p:
+                req['acpi'].append(p)
+
+    # Deduplicate and sort
+    req['kexts'] = _norm_list(req['kexts'])
+    req['drivers'] = _norm_list(req['drivers'])
+    req['acpi'] = _norm_list(req['acpi'])
+    return req
+
+
+def _hash_requirements(req: dict) -> str:
+    data = json.dumps(req, sort_keys=True, separators=(',', ':'))
+    return hashlib.sha256(data.encode('utf-8')).hexdigest()
+
+
+def _requirements_hash_path(changeset_name: str) -> Path:
+    pm.build_root.mkdir(parents=True, exist_ok=True)
+    return pm.build_root / f"{changeset_name}.assets.sha256"
+
+
+def _ensure_assets_fresh_for_changeset(changeset_name: str) -> bool:
+    """Ensure assets are up-to-date for the changeset's requirements.
+
+    Computes a hash of kexts/drivers/ACPI requirements. If it differs from the
+    last stored hash, runs fetch-assets and updates the hash. Also triggers
+    fetch if kexts are missing.
+    """
+    cs = _load_changeset_yaml(changeset_name)
+    if not cs:
+        return False
+    req = _canonical_asset_requirements(cs)
+    new_hash = _hash_requirements(req)
+    hash_file = _requirements_hash_path(changeset_name)
+    old_hash = None
+    try:
+        if hash_file.exists():
+            old_hash = hash_file.read_text().strip()
+    except Exception:
+        old_hash = None
+
+    # Also check if kexts directory is empty/missing
+    kexts_dir = (pm.efi_build / 'EFI' / 'OC' / 'Kexts')
+    kexts_missing = not kexts_dir.exists() or not any(kexts_dir.glob('*.kext'))
+
+    if (old_hash != new_hash) or kexts_missing:
+        if old_hash != new_hash:
+            info("Asset requirements changed; running fetch to update assets")
+        else:
+            info("Kexts directory missing or empty; running fetch to download assets")
+        fetch_script = pm.scripts / 'fetch-assets.py'
+        if not run_command(f'python3.11 "{fetch_script}"', "Fetching assets"):
+            error("Failed to fetch assets")
+            return False
+        try:
+            hash_file.write_text(new_hash)
+        except Exception:
+            pass
+    return True
+
 
 def manage_changeset_kexts(changeset_name, target_efi_dir):
     """
@@ -28,19 +148,15 @@ def manage_changeset_kexts(changeset_name, target_efi_dir):
     Returns:
         bool: True if successful, False otherwise
     """
-    paths = get_project_paths()
-    changeset_path = paths['changesets'] / f"{changeset_name}.yaml"
+    changeset_path = pm.changesets / f"{changeset_name}.yaml"
     
     if not changeset_path.exists():
         error(f"Changeset file not found: {changeset_path}")
         return False
     
     # Load changeset to get kext specifications
-    try:
-        with open(changeset_path, 'r') as f:
-            changeset_data = yaml.safe_load(f)
-    except Exception as e:
-        error(f"Failed to load changeset: {e}")
+    changeset_data = _load_changeset_yaml(changeset_name)
+    if not changeset_data:
         return False
     
     if 'Kexts' not in changeset_data:
@@ -149,7 +265,7 @@ def manage_changeset_drivers(changeset_name, target_efi_dir):
     
     return True
 
-def build_complete_efi_structure(changeset_name, force_rebuild=False):
+def build_complete_efi_structure(changeset_name, force_rebuild=False, apply_changeset: bool = True):
     """
     Build a complete EFI structure with OpenCore, kexts, drivers, and applied changeset.
     This is the unified function used by both USB and ISO builders.
@@ -165,26 +281,28 @@ def build_complete_efi_structure(changeset_name, force_rebuild=False):
     import subprocess
     import sys
     
-    paths = get_project_paths()
-    target_dir = paths['out'] / 'build' / 'efi' / 'EFI'
+    target_dir = pm.efi_build / 'EFI'
     
     log(f"Building complete EFI structure in: {target_dir.parent}")
     
-    # Check if fetch is needed (no kexts or force rebuild)
-    kexts_dir = target_dir / 'OC' / 'Kexts'
-    if force_rebuild or not kexts_dir.exists() or not any(kexts_dir.glob('*.kext')):
-        log("Fetched assets missing or force rebuild requested, running fetch...")
-        fetch_script = paths['scripts'] / 'fetch-assets.py'
+    # Ensure assets are fresh for this changeset or force fetch on rebuild
+    if force_rebuild:
+        info("Force rebuild requested; updating assets via fetch...")
+        fetch_script = pm.scripts / 'fetch-assets.py'
         if not run_command(f'python3.11 "{fetch_script}"', "Fetching assets"):
             error("Failed to fetch assets")
             return False
+    else:
+        if not _ensure_assets_fresh_for_changeset(changeset_name):
+            return False
     
-    # Apply changeset to create config.plist
-    log(f"Applying changeset: {changeset_name}")
-    apply_script = paths['scripts'] / 'apply-changeset.py'
-    if not run_command(f'python3.11 "{apply_script}" "{changeset_name}"', "Applying changeset"):
-        error("Failed to apply changeset")
-        return False
+    # Apply changeset to create config.plist (optional)
+    if apply_changeset:
+        log(f"Applying changeset: {changeset_name}")
+        apply_script = pm.scripts / 'apply-changeset.py'
+        if not run_command(f'python3.11 "{apply_script}" "{changeset_name}"', "Applying changeset"):
+            error("Failed to apply changeset")
+            return False
     
     # Prune kexts based on changeset
     if not manage_changeset_kexts(changeset_name, target_dir):
@@ -196,20 +314,12 @@ def build_complete_efi_structure(changeset_name, force_rebuild=False):
         error("Failed to manage drivers for changeset")
         return False
     
-    # Final validation
-    log("Validating final EFI structure...")
+    # Ensure config exists (validation handled by caller if desired)
+    log("Ensuring final EFI structure has config.plist...")
     config_file = target_dir / 'OC' / 'config.plist'
     if not config_file.exists():
         error(f"Config file not found: {config_file}")
         return False
-    
-    # Validate with ocvalidate if available
-    ocvalidate_path = paths['opencore'] / "Utilities" / "ocvalidate" / "ocvalidate"
-    if ocvalidate_path.exists():
-        if not run_command(f'"{ocvalidate_path}" "{config_file}"', "Validating with ocvalidate"):
-            error("Configuration validation failed")
-            return False
-        log("✓ Configuration passed ocvalidate")
     
     # Clean up any previous changeset files
     efi_root = target_dir.parent
@@ -217,11 +327,18 @@ def build_complete_efi_structure(changeset_name, force_rebuild=False):
     
     # Remove previous changeset touch files in EFI root
     try:
+        # Prefer new *.changeset markers; also clean legacy markers (no suffix)
+        removed = 0
         for item in efi_root.iterdir():
-            if item.is_file() and not item.name.startswith('.') and item.suffix == '':
-                # This is likely a changeset touch file
-                item.unlink()
-                log(f"Removed previous changeset identifier: {item.name}")
+            if item.is_file():
+                if item.suffix == '.changeset' or (not item.name.startswith('.') and item.suffix == ''):
+                    try:
+                        item.unlink()
+                        removed += 1
+                    except Exception:
+                        pass
+        if removed:
+            log(f"Removed {removed} previous changeset identifier file(s)")
     except Exception as e:
         warn(f"Failed to clean previous changeset identifiers: {e}")
     
@@ -235,7 +352,7 @@ def build_complete_efi_structure(changeset_name, force_rebuild=False):
         warn(f"Failed to clean previous changeset YAML files: {e}")
     
     # Copy changeset YAML file to EFI/OC directory
-    changeset_yaml_path = paths['changesets'] / f"{changeset_name}.yaml"
+    changeset_yaml_path = pm.changesets / f"{changeset_name}.yaml"
     target_changeset_path = target_dir / 'OC' / f"{changeset_name}.yaml"
     try:
         if changeset_yaml_path.exists():
@@ -246,11 +363,12 @@ def build_complete_efi_structure(changeset_name, force_rebuild=False):
     except Exception as e:
         warn(f"Failed to copy changeset YAML file: {e}")
     
-    # Create changeset identifier file in EFI root
-    changeset_file = target_dir.parent / changeset_name
+    # Create changeset identifier file in EFI root with .changeset extension
+    changeset_file = target_dir.parent / f"{changeset_name}.changeset"
     try:
+        # Touch (create or update mtime)
         changeset_file.touch()
-        log(f"✓ Created changeset identifier: {changeset_file.name}")
+        log(f"✓ Set changeset identifier: {changeset_file.name}")
     except Exception as e:
         warn(f"Failed to create changeset identifier file: {e}")
     
@@ -275,6 +393,151 @@ def copy_efi_for_build(source_efi_dir, target_build_dir, force_clean=True):
     if not source_efi.exists():
         error(f"Source EFI directory not found: {source_efi}")
         return False
+
+
+def _validate_config_if_available() -> bool:
+    """Run config validation if ocvalidate is available."""
+    validate_script = pm.scripts / 'validate-config.py'
+    if pm.ocvalidate.exists() and validate_script.exists():
+        return run_command(f'python3.11 "{validate_script}"', "Validating configuration")
+    if not pm.ocvalidate.exists():
+        warn("Skipping validation (ocvalidate not available)")
+    return True
+
+
+def build_efi_then_validate(changeset_name: str, force_rebuild=False, no_validate=False, apply_changeset: bool = True) -> bool:
+    """Ensure EFI structure is built for a changeset and optionally validate it."""
+    if not build_complete_efi_structure(changeset_name=changeset_name, force_rebuild=force_rebuild, apply_changeset=apply_changeset):
+        error("Failed to build complete EFI structure")
+        return False
+    if not no_validate and not _validate_config_if_available():
+        error("Configuration validation failed")
+        return False
+    return True
+
+
+def build_iso_artifact(changeset_name: str, force_rebuild=False, no_validate=False, apply_changeset: bool = True) -> bool:
+    """Build EFI then package ISO to pm.opencore_iso using bin/build_isos.sh"""
+    log("Building OpenCore ISO...")
+    ocvalidate_path = pm.ocvalidate
+    if not ocvalidate_path.exists():
+        error("OpenCore tools not found")
+        error(f"Expected ocvalidate at: {ocvalidate_path}")
+        error("Please run './ozzy fetch' first to download OpenCore assets")
+        return False
+
+    if not build_efi_then_validate(changeset_name, force_rebuild, no_validate, apply_changeset=apply_changeset):
+        return False
+
+    # Ensure build script exists and run it (El Torito handled there)
+    build_script = pm.bin / 'build_isos.sh'
+    from . import validate_file_exists
+    validate_file_exists(build_script, "Build script")
+    run_command(f'chmod +x "{build_script}"')
+    if not run_command(f'bash "{build_script}"', "Building OpenCore ISO"):
+        error("ISO build script failed")
+        return False
+    if pm.opencore_iso.exists():
+        log(f"OpenCore ISO created: {pm.opencore_iso}")
+        return True
+    error("ISO build completed but file not found")
+    error(f"Expected ISO at: {pm.opencore_iso}")
+    return False
+
+
+def build_img_artifact(changeset_name: str, force_rebuild=False, no_validate=False, apply_changeset: bool = True) -> bool:
+    """Build EFI then create a 50MB .img under build_root."""
+    log("Building OpenCore IMG...")
+    ocvalidate_path = pm.ocvalidate
+    if not ocvalidate_path.exists():
+        error("OpenCore tools not found")
+        error(f"Expected ocvalidate at: {ocvalidate_path}")
+        error("Please run './ozzy fetch' first to download OpenCore assets")
+        return False
+
+    if not build_efi_then_validate(changeset_name, force_rebuild, no_validate, apply_changeset=apply_changeset):
+        return False
+
+    source_efi = pm.efi_build / 'EFI'
+    if not source_efi.exists():
+        error(f"Source EFI structure not found: {source_efi}")
+        return False
+
+    img_filename = f'opencore-{changeset_name}.img'
+    img_path = pm.build_root / img_filename
+
+    # Remove existing files
+    if img_path.exists():
+        img_path.unlink()
+    dmg_path = pm.build_root / f'{img_filename}.dmg'
+    if dmg_path.exists():
+        dmg_path.unlink()
+
+    # macOS approach using hdiutil, else Linux loopback
+    import sys as _sys
+    import subprocess as _sp
+    if _sys.platform == 'darwin':
+        log("Creating disk image with hdiutil...")
+        temp_name = f'opencore-{changeset_name}'
+        temp_path = pm.build_root / temp_name
+        cmd = f'hdiutil create -size 50m -fs MS-DOS -volname "OZZY-OC" -layout MBRSPUD "{temp_path}"'
+        if not run_command(cmd, "Creating disk image"):
+            return False
+        created_dmg = pm.build_root / f'{temp_name}.dmg'
+        if created_dmg.exists():
+            created_dmg.rename(img_path)
+            log(f"Renamed {created_dmg.name} to {img_path.name}")
+        else:
+            error(f"Expected DMG file not found: {created_dmg}")
+            return False
+        # Mount, copy EFI, then detach
+        log("Mounting disk image...")
+        result = _sp.run(['hdiutil', 'attach', str(img_path)], capture_output=True, text=True)
+        if result.returncode != 0:
+            error(f"Failed to attach disk image: {result.stderr}")
+            return False
+        mount_point = "/Volumes/OZZY-OC"
+        try:
+            log("Copying EFI structure to disk image...")
+            if not run_command(f'cp -R "{source_efi}" "{mount_point}/"', "Copying EFI files"):
+                return False
+            if not run_command(f'chmod -R 755 "{mount_point}/EFI"', "Setting permissions"):
+                return False
+            # Copy changeset marker(s) to image root if present
+            for marker in pm.efi_build.glob('*.changeset'):
+                try:
+                    _sp.run(['cp', str(marker), mount_point], check=True, capture_output=True)
+                except Exception:
+                    pass
+        finally:
+            log("Unmounting disk image...")
+            _sp.run(['hdiutil', 'detach', mount_point], capture_output=True, check=False)
+    else:
+        log("Creating 50MB raw disk image...")
+        if not run_command(f'dd if=/dev/zero of="{img_path}" bs=1m count=50', "Creating disk image"):
+            return False
+        log("Formatting disk image as FAT32...")
+        if not run_command(f'mkfs.fat -F 32 -n "OZZY-OC" "{img_path}"', "Formatting disk image"):
+            return False
+        log("Mounting disk image and copying EFI files...")
+        import tempfile as _tf
+        with _tf.TemporaryDirectory() as temp_mount:
+            if not run_command(f'sudo mount -o loop "{img_path}" "{temp_mount}"', "Mounting disk image"):
+                return False
+            try:
+                if not run_command(f'sudo cp -R "{source_efi}"/* "{temp_mount}/"', "Copying EFI files"):
+                    return False
+                if not run_command(f'sudo chmod -R 755 "{temp_mount}/EFI"', "Setting permissions"):
+                    return False
+                # Copy changeset marker(s) to image root if present
+                for marker in pm.efi_build.glob('*.changeset'):
+                    _sp.run(['sudo', 'cp', str(marker), temp_mount], capture_output=True, check=False)
+            finally:
+                log("Unmounting disk image...")
+                _sp.run(['sudo', 'umount', temp_mount], capture_output=True, check=False)
+
+    log(f"✓ OpenCore IMG built successfully: {img_path}")
+    return True
     
     # Clean target if requested
     if force_clean and (target_build / 'EFI').exists():

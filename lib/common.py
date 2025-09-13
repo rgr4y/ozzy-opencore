@@ -169,22 +169,54 @@ def validate_file_exists(file_path: Path, description="File"):
     return file_path
 
 def get_project_paths():
-    """Get commonly used project paths"""
+    """Get commonly used project paths via PathManager (backward compatible)."""
+    pm = None
+    try:
+        from .paths import PathManager  # type: ignore
+        pm = PathManager(ROOT)
+    except Exception:
+        try:
+            from paths import PathManager  # type: ignore
+            pm = PathManager(ROOT)
+        except Exception:
+            pm = None
+
+    if pm is None:
+        # Fallback to legacy hardcoded mapping
+        return {
+            'root': ROOT,
+            'config': ROOT / 'config',
+            'changesets': ROOT / 'config' / 'changesets',
+            'scripts': ROOT / 'scripts',
+            'assets': ROOT / 'assets',
+            'out': ROOT / 'out',
+            'build_root': ROOT / 'out' / 'build',
+            'efi_build': ROOT / 'out' / 'build' / 'efi',
+            'efi_oc': ROOT / 'out' / 'build' / 'efi' / 'EFI' / 'OC',
+            'usb_efi': ROOT / 'out' / 'build' / 'usb',
+            'deploy_env': ROOT / 'config' / 'deploy.env',
+            'sources_json': ROOT / 'config' / 'sources.json',
+            'opencore': ROOT / 'out' / 'opencore',
+            'bin': ROOT / 'bin',
+        }
+
+    # Build legacy-style mapping from PathManager
     return {
-        'root': ROOT,
-        'config': ROOT / 'config',
-        'changesets': ROOT / 'config' / 'changesets',
-        'scripts': ROOT / 'scripts',
-        'assets': ROOT / 'assets',
-        'out': ROOT / 'out',
-        'build_root': ROOT / 'out' / 'build',
-        'efi_build': ROOT / 'out' / 'efi',
-        'efi_oc': ROOT / 'out' / 'build' / 'efi' / 'EFI' / 'OC',
-        'usb_efi': ROOT / 'out' / 'build' / 'usb',
-        'deploy_env': ROOT / 'config' / 'deploy.env',
-        'sources_json': ROOT / 'config' / 'sources.json',
-        'opencore': ROOT / 'out' / 'opencore',
-        'bin': ROOT / 'bin',
+        'root': pm.root,
+        'config': pm.config,
+        'changesets': pm.changesets,
+        'scripts': pm.scripts,
+        'assets': pm.assets,
+        'out': pm.out,
+        'build_root': pm.build_root,
+        'efi_build': pm.efi_build,
+        'efi_oc': pm.oc_efi,
+        # Historically this pointed at the parent dir that will contain an EFI folder
+        'usb_efi': pm.usb_build,
+        'deploy_env': pm.config / 'deploy.env',
+        'sources_json': pm.config / 'sources.json',
+        'opencore': pm.opencore_release,
+        'bin': pm.bin,
     }
 
 def check_required_tools(tools):
