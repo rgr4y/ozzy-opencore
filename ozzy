@@ -464,6 +464,7 @@ def main():
         'generate-smbios': ROOT / 'scripts' / 'generate-serial.py',
         'generate-serial': ROOT / 'scripts' / 'generate-serial.py',
         'read-config': ROOT / 'scripts' / 'read-config.py',
+        'compare': ROOT / 'scripts' / 'compare-changesets.py',
         # Workflows
         'full-usb': ROOT / 'workflows' / 'full-usb.py',
         'full-deploy': ROOT / 'workflows' / 'full-deploy.py',

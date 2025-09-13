@@ -132,6 +132,12 @@ def print_comparison_report(comparison: Dict[str, Any], name1: str, name2: str):
     print(f"  Different:             {summary['different_sections']}")
     print(f"  Identical:             {summary['identical_sections']}")
     
+    # Identical sections
+    if comparison['identical_sections']:
+        print(f"\n✅ IDENTICAL SECTIONS:")
+        for section in comparison['identical_sections']:
+            print(f"  ✓ {section}")
+
     # Sections only in first
     if comparison['sections_only_in_first']:
         print(f"\n📋 SECTIONS ONLY IN FIRST ({name1}):")
@@ -159,12 +165,6 @@ def print_comparison_report(comparison: Dict[str, Any], name1: str, name2: str):
                 else:
                     print(f"    ⚪ {diff}")
     
-    # Identical sections
-    if comparison['identical_sections']:
-        print(f"\n✅ IDENTICAL SECTIONS:")
-        for section in comparison['identical_sections']:
-            print(f"  ✓ {section}")
-
 def main():
     parser = argparse.ArgumentParser(
         description='Compare two OpenCore changesets',
